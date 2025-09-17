@@ -1,35 +1,27 @@
 // API Configuration
-// Update the PRODUCTION_API_URL with your server's IP address or domain
 
 const DEVELOPMENT_API_URL = 'http://localhost:3001';
-const FALLBACK_PRODUCTION_URL = 'https://golf-production-2296.up.railway.app';
+const PRODUCTION_API_URL = 'https://golf-production-2296.up.railway.app';
 
-// Get production URL from environment or fallback
-const envProductionUrl = process.env.EXPO_PUBLIC_API_URL;
-const PRODUCTION_API_URL = envProductionUrl && envProductionUrl !== 'http://localhost:3001'
-  ? envProductionUrl
-  : FALLBACK_PRODUCTION_URL;
+// Determine if we're in development based on multiple factors
+const isDevelopment = 
+  process.env.NODE_ENV === 'development' || 
+  __DEV__ ||  // Expo/React Native specific
+  (typeof window !== 'undefined' && window.location.hostname === 'localhost');
 
-// Force production URL for any non-localhost deployment
-const isLocalhost = typeof window !== 'undefined' && (
-  window.location.hostname === 'localhost' ||
-  window.location.hostname === '127.0.0.1' ||
-  window.location.hostname.includes('localhost')
-);
-
-// Use production URL unless explicitly on localhost
-export const API_BASE_URL = isLocalhost ? DEVELOPMENT_API_URL : PRODUCTION_API_URL;
+// Use development API only if explicitly in development mode
+export const API_BASE_URL = isDevelopment ? DEVELOPMENT_API_URL : PRODUCTION_API_URL;
 
 // Debug logging
-console.log('API Configuration:', {
-  hostname: typeof window !== 'undefined' ? window.location.hostname : 'undefined',
-  EXPO_PUBLIC_API_URL: process.env.EXPO_PUBLIC_API_URL,
-  NODE_ENV: process.env.NODE_ENV,
-  envProductionUrl,
-  PRODUCTION_API_URL,
-  isLocalhost,
-  finalApiUrl: API_BASE_URL
-});
+if (typeof window !== 'undefined') {
+  console.log('API Configuration:', {
+    hostname: window.location.hostname,
+    NODE_ENV: process.env.NODE_ENV,
+    __DEV__: typeof __DEV__ !== 'undefined' ? __DEV__ : 'undefined',
+    isDevelopment,
+    API_BASE_URL
+  });
+}
 
 export const API_ENDPOINTS = {
   // Authentication
@@ -42,8 +34,9 @@ export const API_ENDPOINTS = {
   joinTournament: (id: string) => `${API_BASE_URL}/api/tournaments/${id}/join`,
   createdTournaments: `${API_BASE_URL}/api/tournaments/created`,
   joinedTournaments: `${API_BASE_URL}/api/tournaments/joined`,
+  deleteTournament: (id: string) => `${API_BASE_URL}/api/tournaments/${id}`,
 
-  // Courses
+  // Courses  
   addCourse: (tournamentId: string) => `${API_BASE_URL}/api/tournaments/${tournamentId}/courses`,
   removeCourse: (tournamentId: string, courseId: string) => `${API_BASE_URL}/api/tournaments/${tournamentId}/courses/${courseId}`,
   setTee: (tournamentId: string, courseId: string) => `${API_BASE_URL}/api/tournaments/${tournamentId}/courses/${courseId}/tee`,
