@@ -7,6 +7,36 @@ const router = express.Router();
 let users = [];
 let sessions = {};
 
+// Initialize with test users for demo purposes
+const initializeTestUsers = () => {
+  if (users.length === 0) {
+    users.push({
+      id: 'test-user-1',
+      username: 'testuser',
+      email: 'test@golf.com',
+      password: 'password123',
+      handicapIndex: 18.5,
+      createdAt: new Date().toISOString(),
+      tournaments: []
+    });
+
+    users.push({
+      id: 'test-user-2',
+      username: 'demo',
+      email: 'demo@golf.com',
+      password: 'demo123',
+      handicapIndex: 12.3,
+      createdAt: new Date().toISOString(),
+      tournaments: []
+    });
+
+    console.log('✅ Test users initialized');
+  }
+};
+
+// Initialize test users on startup
+initializeTestUsers();
+
 // Helper function to generate user ID
 const generateUserId = () => crypto.randomBytes(16).toString('hex');
 
