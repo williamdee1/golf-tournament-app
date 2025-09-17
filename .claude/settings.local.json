@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:api.golfcourseapi.com)",
+      "Bash(npm run web:*)",
+      "Bash(npx expo start:*)",
+      "Bash(npm start)",
+      "Bash(node server.js)",
+      "Bash(timeout:*)",
+      "Bash(node:*)",
+      "Bash(curl:*)",
+      "Bash(taskkill:*)",
+      "Bash(netstat:*)",
+      "Bash(findstr:*)",
+      "Bash(pkill:*)",
+      "Bash(railway service:*)",
+      "Bash(railway logs:*)",
+      "Bash(find:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npx eslint:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
