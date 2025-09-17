@@ -3,7 +3,7 @@ const axios = require('axios');
 class GolfCourseApiService {
   constructor() {
     this.baseUrl = 'https://api.golfcourseapi.com/v1';
-    this.apiKey = '3OUTPX2MOI533VS4JYEDNTVYCY';
+    this.apiKey = process.env.GOLF_COURSE_API_KEY || '';
   }
 
   async makeRequest(endpoint, params = {}) {

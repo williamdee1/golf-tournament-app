@@ -38,7 +38,7 @@
 
 ### Production (Railway)
 - **Frontend**: To be deployed to web hosting
-- **Backend**: https://golf-production-2296.up.railway.app
+- **Backend**: [RAILWAY_URL - see environment variables]
 - **Features**: Full URL scraping with puppeteer-core
 
 ## 📁 Project Structure
@@ -91,7 +91,7 @@ curl -X POST http://localhost:3001/api/golf/scrape-url \
   -d '{"url": "https://algarvegolf.net/espichegolf/scorecard.htm"}'
 
 # Test Railway production API
-curl -X POST https://golf-production-2296.up.railway.app/api/golf/scrape-url \
+curl -X POST [RAILWAY_URL]/api/golf/scrape-url \
   -H "Content-Type: application/json" \
   -d '{"url": "https://algarvegolf.net/espichegolf/scorecard.htm"}'
 ```

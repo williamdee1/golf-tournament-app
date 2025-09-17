@@ -7,7 +7,7 @@ const PORT = 3001;
 
 // Golf Course API configuration
 const GOLF_API_BASE = 'https://api.golfcourseapi.com';
-const API_KEY = '3OUTPX2MOI533VS4JYEDNTVYCY';
+const API_KEY = process.env.GOLF_COURSE_API_KEY || '';
 
 // Middleware
 app.use(cors());
