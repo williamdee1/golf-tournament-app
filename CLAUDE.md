@@ -18,7 +18,7 @@ A mobile golf tournament app for friends to compete in multi-course tournaments,
   2. Navigate to BluGolf result page
   3. Scrape scorecard information from BluGolf course pages
   4. Example: La Cala Campo Europa → https://course.bluegolf.com/bluegolf/course/course/lacalagreurpoa/detailedscorecard.htm
-- **Fallback API**: golfcourseapi.com (API Key: 3OUTPX2MOI533VS4JYEDNTVYCY)
+- **Fallback API**: golfcourseapi.com (API Key: [REDACTED - use environment variable])
 - **Note**: Small-scale implementation planned due to manual nature of BluGolf scraping
 
 ### User Management
