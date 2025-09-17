@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, TextInput } from 'react-native';
 import { NavigationProp, RouteProp } from '@react-navigation/native';
+import { API_ENDPOINTS } from '../config/api';
 
 type Props = {
   navigation: NavigationProp<any>;
@@ -47,7 +48,7 @@ export default function CourseScorecard({ navigation, route, user, sessionToken 
     if (!tournamentId || !currentPlayer || !sessionToken) return;
 
     try {
-      const response = await fetch(`http://localhost:3001/api/tournaments/${tournamentId}`, {
+      const response = await fetch(API_ENDPOINTS.tournamentDetail(tournamentId), {
         headers: {
           'Authorization': `Bearer ${sessionToken}`,
         },
@@ -78,7 +79,7 @@ export default function CourseScorecard({ navigation, route, user, sessionToken 
 
     setIsLoading(true);
     try {
-      const response = await fetch(`http://localhost:3001/api/tournaments/${tournamentId}/scores/${course.id}/${holeNumber}`, {
+      const response = await fetch(API_ENDPOINTS.saveScore(tournamentId, course.id, holeNumber), {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${sessionToken}`,
@@ -108,7 +109,7 @@ export default function CourseScorecard({ navigation, route, user, sessionToken 
     }
 
     try {
-      const response = await fetch(`http://localhost:3001/api/tournaments/${tournamentId}/handicap/${course.id}`, {
+      const response = await fetch(API_ENDPOINTS.saveHandicap(tournamentId, course.id), {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${sessionToken}`,

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, Button, StyleSheet, ScrollView, Alert } from 'react-native';
 import { golfCourseApi } from '../services/golfCourseApi';
+import { API_ENDPOINTS } from '../config/api';
 
 export default function ApiTestScreen() {
   const [testResult, setTestResult] = useState<string>('');
@@ -25,7 +26,7 @@ export default function ApiTestScreen() {
     setTestResult('Testing backend connection...');
     
     try {
-      const response = await fetch('http://localhost:3001/api/test');
+      const response = await fetch(API_ENDPOINTS.test);
       const data = await response.json();
       setTestResult(`Backend test result: ${JSON.stringify(data, null, 2)}`);
     } catch (error) {

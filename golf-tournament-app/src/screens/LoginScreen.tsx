@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, TextInput, Alert } from 'react-native';
 import { NavigationProp } from '@react-navigation/native';
+import { API_ENDPOINTS } from '../config/api';
 
 type Props = {
   navigation: NavigationProp<any>;
@@ -29,7 +30,7 @@ export default function LoginScreen({ navigation, onLogin }: Props) {
     setIsLoading(true);
 
     try {
-      const endpoint = isLogin ? '/api/auth/login' : '/api/auth/register';
+      const endpoint = isLogin ? API_ENDPOINTS.login : API_ENDPOINTS.register;
       const body = isLogin
         ? { email: email.trim(), password }
         : {
@@ -39,7 +40,7 @@ export default function LoginScreen({ navigation, onLogin }: Props) {
             handicapIndex: handicapIndex ? parseFloat(handicapIndex) : null
           };
 
-      const response = await fetch(`http://localhost:3001${endpoint}`, {
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, TextInput, Modal } from 'react-native';
 import { NavigationProp, RouteProp } from '@react-navigation/native';
+import { API_ENDPOINTS } from '../config/api';
 
 type Props = {
   navigation: NavigationProp<any>;
@@ -39,7 +40,7 @@ export default function TournamentDetail({ navigation, route, user, sessionToken
   const loadTournamentData = async () => {
     setIsLoadingTournament(true);
     try {
-      const response = await fetch(`http://localhost:3001/api/tournaments/${tournamentId}`, {
+      const response = await fetch(API_ENDPOINTS.tournamentDetail(tournamentId), {
         headers: {
           'Authorization': `Bearer ${sessionToken}`,
         },
@@ -70,7 +71,7 @@ export default function TournamentDetail({ navigation, route, user, sessionToken
     setIsLoading(true);
     try {
       // Scrape the course data from the URL
-      const scrapeResponse = await fetch('http://localhost:3001/api/golf/scrape-url', {
+      const scrapeResponse = await fetch(API_ENDPOINTS.golfScrape, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -94,7 +95,7 @@ export default function TournamentDetail({ navigation, route, user, sessionToken
         // If this is an existing tournament, save the course to the backend immediately
         if (isExisting && tournament && user && sessionToken) {
           try {
-            const addResponse = await fetch(`http://localhost:3001/api/tournaments/${tournament.id}/courses`, {
+            const addResponse = await fetch(API_ENDPOINTS.addCourse(tournament.id), {
               method: 'POST',
               headers: {
                 'Authorization': `Bearer ${sessionToken}`,
@@ -150,7 +151,7 @@ export default function TournamentDetail({ navigation, route, user, sessionToken
             // If this is an existing tournament, remove from backend
             if (isExisting && tournament && user && sessionToken) {
               try {
-                const response = await fetch(`http://localhost:3001/api/tournaments/${tournament.id}/courses/${courseId}`, {
+                const response = await fetch(API_ENDPOINTS.removeCourse(tournament.id, courseId), {
                   method: 'DELETE',
                   headers: {
                     'Authorization': `Bearer ${sessionToken}`,
@@ -187,7 +188,7 @@ export default function TournamentDetail({ navigation, route, user, sessionToken
     }
 
     try {
-      const response = await fetch(`http://localhost:3001/api/tournaments/${tournament.id}/courses/${courseId}/tee`, {
+      const response = await fetch(API_ENDPOINTS.setTee(tournament.id, courseId), {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${sessionToken}`,
@@ -223,7 +224,7 @@ export default function TournamentDetail({ navigation, route, user, sessionToken
 
     setIsSaving(true);
     try {
-      const response = await fetch('http://localhost:3001/api/tournaments', {
+      const response = await fetch(API_ENDPOINTS.tournaments, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${sessionToken}`,

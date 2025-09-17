@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, TextInput, Modal } from 'react-native';
 import { NavigationProp } from '@react-navigation/native';
+import { API_ENDPOINTS } from '../config/api';
 
 type Props = {
   navigation: NavigationProp<any>;
@@ -37,12 +38,12 @@ export default function HomeScreen({ navigation, user, sessionToken, onLogout }:
     setIsLoadingTournaments(true);
     try {
       const [createdResponse, joinedResponse] = await Promise.all([
-        fetch('http://localhost:3001/api/tournaments/created', {
+        fetch(API_ENDPOINTS.createdTournaments, {
           headers: {
             'Authorization': `Bearer ${sessionToken}`,
           },
         }),
-        fetch('http://localhost:3001/api/tournaments/joined', {
+        fetch(API_ENDPOINTS.joinedTournaments, {
           headers: {
             'Authorization': `Bearer ${sessionToken}`,
           },
@@ -73,7 +74,7 @@ export default function HomeScreen({ navigation, user, sessionToken, onLogout }:
 
     setIsJoining(true);
     try {
-      const response = await fetch(`http://localhost:3001/api/tournaments/${tournamentId.trim()}/join`, {
+      const response = await fetch(API_ENDPOINTS.joinTournament(tournamentId.trim()), {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${sessionToken}`,
@@ -119,7 +120,7 @@ export default function HomeScreen({ navigation, user, sessionToken, onLogout }:
           style: 'destructive',
           onPress: async () => {
             try {
-              const response = await fetch(`http://localhost:3001/api/tournaments/${tournament.id}`, {
+              const response = await fetch(API_ENDPOINTS.deleteTournament(tournament.id), {
                 method: 'DELETE',
                 headers: {
                   'Authorization': `Bearer ${sessionToken}`,
