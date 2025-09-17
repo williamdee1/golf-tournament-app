@@ -299,9 +299,6 @@ export default function CourseScorecard({ navigation, route, user, sessionToken 
         <View style={styles.headerTop}>
           <View style={styles.headerLeft}>
             <Text style={styles.title}>{course.name}</Text>
-            {course.location && course.location !== 'Unknown location' && (
-              <Text style={styles.location}>{course.location}</Text>
-            )}
             <Text style={styles.tournamentInfo}>
               Tournament: {tournamentName}
             </Text>
@@ -442,11 +439,6 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: 'bold',
     color: '#2e7d32',
-    marginBottom: 5,
-  },
-  location: {
-    fontSize: 16,
-    color: '#666',
     marginBottom: 5,
   },
   tournamentInfo: {

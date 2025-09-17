@@ -110,15 +110,10 @@ export default function HomeScreen({ navigation, user, sessionToken, onLogout }:
 
   const deleteTournament = async (tournament: Tournament) => {
     console.log('Delete tournament pressed:', tournament.id, tournament.name);
-    Alert.alert(
-      'Delete Tournament',
-      `Are you sure you want to delete "${tournament.name}"? This action cannot be undone.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
+
+    // Use window.confirm for web compatibility
+    const confirmed = window.confirm(`Are you sure you want to delete "${tournament.name}"? This action cannot be undone.`);
+    if (confirmed) {
             try {
               const response = await fetch(API_ENDPOINTS.deleteTournament(tournament.id), {
                 method: 'DELETE',
@@ -130,19 +125,16 @@ export default function HomeScreen({ navigation, user, sessionToken, onLogout }:
               const data = await response.json();
 
               if (data.success) {
-                Alert.alert('Success', data.message);
+                window.alert('Tournament deleted successfully!');
                 loadTournaments(); // Refresh tournament list
               } else {
-                Alert.alert('Error', data.error || 'Failed to delete tournament');
+                window.alert(`Error: ${data.error || 'Failed to delete tournament'}`);
               }
             } catch (error) {
               console.error('Delete tournament error:', error);
-              Alert.alert('Error', 'Failed to delete tournament. Please try again.');
+              window.alert('Error: Failed to delete tournament. Please try again.');
             }
-          }
-        }
-      ]
-    );
+    }
   };
 
   return (

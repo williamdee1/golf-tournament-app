@@ -3,6 +3,11 @@ import { View, Text, StyleSheet, TouchableOpacity, TextInput, Alert } from 'reac
 import { NavigationProp } from '@react-navigation/native';
 import { API_ENDPOINTS } from '../config/api';
 
+const isDevelopment =
+  process.env.NODE_ENV === 'development' ||
+  __DEV__ ||
+  (typeof window !== 'undefined' && window.location.hostname === 'localhost');
+
 type Props = {
   navigation: NavigationProp<any>;
   onLogin: (user: any, token: string) => void;
@@ -15,6 +20,8 @@ export default function LoginScreen({ navigation, onLogin }: Props) {
   const [username, setUsername] = useState('');
   const [handicapIndex, setHandicapIndex] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
 
   const handleSubmit = async () => {
     if (!email.trim() || !password.trim()) {
@@ -69,6 +76,61 @@ export default function LoginScreen({ navigation, onLogin }: Props) {
     setPassword('');
     setUsername('');
     setHandicapIndex('');
+    setShowForgotPassword(false);
+    setForgotEmail('');
+  };
+
+  const handleForgotPassword = async () => {
+    if (!forgotEmail.trim()) {
+      if (typeof window !== 'undefined') {
+        window.alert('Please enter your email address');
+      } else {
+        Alert.alert('Error', 'Please enter your email address');
+      }
+      return;
+    }
+
+    setIsLoading(true);
+
+    try {
+      const response = await fetch(API_ENDPOINTS.forgotPassword, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email: forgotEmail.trim() }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        const message = 'If an account with that email exists, a password reset link has been sent to your email.';
+        if (typeof window !== 'undefined') {
+          window.alert(message);
+        } else {
+          Alert.alert('Success', message);
+        }
+        setShowForgotPassword(false);
+        setForgotEmail('');
+      } else {
+        const errorMessage = `Error: ${data.error || 'Failed to send reset email'}`;
+        if (typeof window !== 'undefined') {
+          window.alert(errorMessage);
+        } else {
+          Alert.alert('Error', errorMessage);
+        }
+      }
+    } catch (error) {
+      console.error('Forgot password error:', error);
+      const errorMessage = 'Failed to send reset email. Please try again.';
+      if (typeof window !== 'undefined') {
+        window.alert(errorMessage);
+      } else {
+        Alert.alert('Error', errorMessage);
+      }
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -131,10 +193,56 @@ export default function LoginScreen({ navigation, onLogin }: Props) {
             {isLogin ? "Don't have an account? Sign up" : "Already have an account? Sign in"}
           </Text>
         </TouchableOpacity>
+
+        {/* Forgot Password Link (only show on login) */}
+        {isLogin && !showForgotPassword && (
+          <TouchableOpacity
+            style={styles.forgotPasswordLink}
+            onPress={() => setShowForgotPassword(true)}
+          >
+            <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
+          </TouchableOpacity>
+        )}
+
+        {/* Forgot Password Form */}
+        {showForgotPassword && (
+          <View style={styles.forgotPasswordSection}>
+            <Text style={styles.forgotPasswordTitle}>Reset Password</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Enter your email address"
+              value={forgotEmail}
+              onChangeText={setForgotEmail}
+              autoCapitalize="none"
+              keyboardType="email-address"
+            />
+            <View style={styles.forgotPasswordButtons}>
+              <TouchableOpacity
+                style={[styles.button, styles.forgotPasswordButton]}
+                onPress={handleForgotPassword}
+                disabled={isLoading}
+              >
+                <Text style={styles.buttonText}>
+                  {isLoading ? 'Sending...' : 'Send Reset Link'}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.button, styles.cancelButton]}
+                onPress={() => {
+                  setShowForgotPassword(false);
+                  setForgotEmail('');
+                }}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
       </View>
 
-      {/* Demo users for testing */}
-      <View style={styles.demoSection}>
+      {/* Demo users for testing (development only) */}
+      {isDevelopment && (
+        <View style={styles.demoSection}>
         <Text style={styles.demoTitle}>
           {isLogin ? 'Demo Login Accounts:' : 'Demo Registration Data:'}
         </Text>
@@ -169,6 +277,7 @@ export default function LoginScreen({ navigation, onLogin }: Props) {
           </Text>
         </TouchableOpacity>
       </View>
+      )}
     </View>
   );
 }
@@ -250,5 +359,50 @@ const styles = StyleSheet.create({
   demoButtonText: {
     color: '#666',
     fontSize: 12,
+  },
+  forgotPasswordLink: {
+    padding: 10,
+    alignItems: 'center',
+    marginTop: 10,
+  },
+  forgotPasswordText: {
+    color: '#2e7d32',
+    fontSize: 14,
+    textDecorationLine: 'underline',
+  },
+  forgotPasswordSection: {
+    marginTop: 20,
+    padding: 20,
+    backgroundColor: '#f5f5f5',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#ddd',
+  },
+  forgotPasswordTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    marginBottom: 15,
+    color: '#333',
+  },
+  forgotPasswordButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 10,
+  },
+  forgotPasswordButton: {
+    flex: 1,
+    marginRight: 10,
+    backgroundColor: '#ff6b35',
+  },
+  cancelButton: {
+    flex: 1,
+    marginLeft: 10,
+    backgroundColor: '#ccc',
+  },
+  cancelButtonText: {
+    color: '#333',
+    fontSize: 18,
+    fontWeight: 'bold',
   },
 });
