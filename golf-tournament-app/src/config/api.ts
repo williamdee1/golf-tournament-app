@@ -4,10 +4,22 @@
 const DEVELOPMENT_API_URL = 'http://localhost:3001';
 const PRODUCTION_API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3001';
 
-// Automatically detect environment
-const isDevelopment = __DEV__ || process.env.NODE_ENV === 'development' || window.location.hostname === 'localhost';
+// Environment detection - prioritize explicit production URL
+const hasProductionUrl = process.env.EXPO_PUBLIC_API_URL && process.env.EXPO_PUBLIC_API_URL !== 'http://localhost:3001';
+const isLocalhost = typeof window !== 'undefined' && window.location.hostname === 'localhost';
+const isDevelopment = process.env.NODE_ENV === 'development' || isLocalhost;
 
-export const API_BASE_URL = isDevelopment ? DEVELOPMENT_API_URL : PRODUCTION_API_URL;
+export const API_BASE_URL = hasProductionUrl ? PRODUCTION_API_URL : (isDevelopment ? DEVELOPMENT_API_URL : PRODUCTION_API_URL);
+
+// Debug logging
+console.log('API Configuration:', {
+  EXPO_PUBLIC_API_URL: process.env.EXPO_PUBLIC_API_URL,
+  NODE_ENV: process.env.NODE_ENV,
+  hasProductionUrl,
+  isDevelopment,
+  isLocalhost,
+  finalApiUrl: API_BASE_URL
+});
 
 export const API_ENDPOINTS = {
   // Authentication
