@@ -360,39 +360,22 @@ async function scrapeGeneralScorecard(url) {
 
 // Golfify JSON scraper function
 async function scrapeGolfifyScorecard(url) {
-  const puppeteer = require('puppeteer-core');
+  // Try puppeteer-core first, fall back to puppeteer if browser not found
+  let puppeteer;
+  try {
+    puppeteer = require('puppeteer-core');
+  } catch (e) {
+    console.log('⚠️ puppeteer-core not available, trying puppeteer');
+    puppeteer = require('puppeteer');
+  }
 
   let browser;
   try {
     console.log(`🔍 Launching browser to scrape Golfify: ${url}`);
 
-    // Windows Chrome paths
-    const windowsChromePaths = [
-      'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
-      'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
-      process.env.LOCALAPPDATA + '\\Google\\Chrome\\Application\\chrome.exe'
-    ];
-
-    let executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || process.env.CHROME_BIN;
-
-    // Try to find Chrome on Windows if no explicit path is set
-    if (!executablePath && process.platform === 'win32') {
-      for (const path of windowsChromePaths) {
-        try {
-          const fs = require('fs');
-          if (fs.existsSync(path)) {
-            executablePath = path;
-            break;
-          }
-        } catch (e) {
-          // Continue to next path
-        }
-      }
-    }
-
-    browser = await puppeteer.launch({
-      headless: true,
-      executablePath: executablePath,
+    // Configure Puppeteer for different environments
+    let puppeteerConfig = {
+      headless: 'new',
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
@@ -400,9 +383,82 @@ async function scrapeGolfifyScorecard(url) {
         '--disable-accelerated-2d-canvas',
         '--no-first-run',
         '--no-zygote',
-        '--disable-gpu'
+        '--disable-gpu',
+        '--disable-background-timer-throttling',
+        '--disable-backgrounding-occluded-windows',
+        '--disable-renderer-backgrounding'
       ]
-    });
+    };
+
+    // Production environment detection (Railway, Heroku, etc.)
+    if (process.env.NODE_ENV === 'production' || process.env.RAILWAY_ENVIRONMENT || process.env.HEROKU_APP_NAME) {
+      console.log('🚀 Configuring Puppeteer for production environment');
+
+      // Try common production browser paths
+      const productionPaths = [
+        '/usr/bin/chromium-browser',
+        '/usr/bin/chromium',
+        '/usr/bin/google-chrome-stable',
+        '/usr/bin/google-chrome'
+      ];
+
+      let executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || process.env.CHROME_BIN;
+
+      // If no explicit path, try to find browser in production
+      if (!executablePath) {
+        const fs = require('fs');
+        for (const path of productionPaths) {
+          if (fs.existsSync(path)) {
+            executablePath = path;
+            console.log(`📍 Found browser at: ${path}`);
+            break;
+          }
+        }
+      }
+
+      if (executablePath) {
+        puppeteerConfig.executablePath = executablePath;
+      } else {
+        // If no browser found in production, log warning and skip executablePath
+        // This will let puppeteer try to find its own browser
+        console.log('⚠️ No browser executable found in production, trying default puppeteer browser');
+      }
+    } else {
+      // Development environment - try to find local browsers
+      console.log('💻 Configuring Puppeteer for development environment');
+
+      const windowsChromePaths = [
+        'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+        'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+        'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+        process.env.LOCALAPPDATA + '\\Google\\Chrome\\Application\\chrome.exe'
+      ];
+
+      let executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || process.env.CHROME_BIN;
+
+      // Try to find Chrome/Edge on Windows if no explicit path is set
+      if (!executablePath && process.platform === 'win32') {
+        const fs = require('fs');
+        for (const path of windowsChromePaths) {
+          try {
+            if (fs.existsSync(path)) {
+              executablePath = path;
+              console.log(`📍 Found browser at: ${path}`);
+              break;
+            }
+          } catch (e) {
+            // Continue to next path
+          }
+        }
+      }
+
+      if (executablePath) {
+        puppeteerConfig.executablePath = executablePath;
+      }
+    }
+
+    console.log('🔧 Puppeteer config:', { hasExecutablePath: !!puppeteerConfig.executablePath });
+    browser = await puppeteer.launch(puppeteerConfig);
 
     const page = await browser.newPage();
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
