@@ -2,20 +2,26 @@
 // Update the PRODUCTION_API_URL with your server's IP address or domain
 
 const DEVELOPMENT_API_URL = 'http://localhost:3001';
-const PRODUCTION_API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3001';
+const FALLBACK_PRODUCTION_URL = 'https://golf-production-2296.up.railway.app';
 
-// Environment detection - prioritize explicit production URL
-const hasProductionUrl = process.env.EXPO_PUBLIC_API_URL && process.env.EXPO_PUBLIC_API_URL !== 'http://localhost:3001';
+// Get production URL from environment or fallback
+const envProductionUrl = process.env.EXPO_PUBLIC_API_URL;
+const PRODUCTION_API_URL = envProductionUrl && envProductionUrl !== 'http://localhost:3001'
+  ? envProductionUrl
+  : FALLBACK_PRODUCTION_URL;
+
+// Environment detection
 const isLocalhost = typeof window !== 'undefined' && window.location.hostname === 'localhost';
 const isDevelopment = process.env.NODE_ENV === 'development' || isLocalhost;
 
-export const API_BASE_URL = hasProductionUrl ? PRODUCTION_API_URL : (isDevelopment ? DEVELOPMENT_API_URL : PRODUCTION_API_URL);
+export const API_BASE_URL = isDevelopment ? DEVELOPMENT_API_URL : PRODUCTION_API_URL;
 
 // Debug logging
 console.log('API Configuration:', {
   EXPO_PUBLIC_API_URL: process.env.EXPO_PUBLIC_API_URL,
   NODE_ENV: process.env.NODE_ENV,
-  hasProductionUrl,
+  envProductionUrl,
+  PRODUCTION_API_URL,
   isDevelopment,
   isLocalhost,
   finalApiUrl: API_BASE_URL
