@@ -1,6 +1,19 @@
 const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
+
+// Fix for Railway deployment - polyfill missing Web APIs
+if (typeof globalThis.File === 'undefined') {
+  globalThis.File = class File {
+    constructor(data, name, options = {}) {
+      this.data = data;
+      this.name = name;
+      this.type = options.type || '';
+      this.lastModified = options.lastModified || Date.now();
+    }
+  };
+}
+
 const golfRoutes = require('./routes/golf');
 const authRoutes = require('./routes/auth');
 const tournamentRoutes = require('./routes/tournaments');

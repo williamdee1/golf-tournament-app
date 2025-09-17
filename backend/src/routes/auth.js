@@ -1,15 +1,17 @@
 const express = require('express');
 const crypto = require('crypto');
+const emailService = require('../services/emailService');
 
 const router = express.Router();
 
 // Simple in-memory storage (in production, this would be a proper database)
 let users = [];
 let sessions = {};
+let resetTokens = {}; // Format: { token: { userId, email, expiresAt } }
 
-// Initialize with test users for demo purposes
+// Initialize with test users for demo purposes (development only)
 const initializeTestUsers = () => {
-  if (users.length === 0) {
+  if (users.length === 0 && process.env.NODE_ENV === 'development') {
     users.push({
       id: 'test-user-1',
       username: 'testuser',
@@ -30,11 +32,13 @@ const initializeTestUsers = () => {
       tournaments: []
     });
 
-    console.log('✅ Test users initialized');
+    console.log('✅ Test users initialized (development mode)');
+  } else if (process.env.NODE_ENV === 'production') {
+    console.log('🔒 Production mode - no test users created');
   }
 };
 
-// Initialize test users on startup
+// Initialize test users on startup (development only)
 initializeTestUsers();
 
 // Helper function to generate user ID
@@ -84,6 +88,11 @@ router.post('/register', (req, res) => {
     };
 
     console.log(`✅ User registered: ${username} (${email})`);
+
+    // Send welcome email (async, don't wait for it)
+    emailService.sendWelcomeEmail(newUser.email, newUser.username)
+      .then(() => console.log(`📧 Welcome email sent to ${newUser.email}`))
+      .catch(error => console.error(`❌ Failed to send welcome email to ${newUser.email}:`, error.message));
 
     res.json({
       success: true,
@@ -239,6 +248,120 @@ const authenticateUser = (req, res, next) => {
   req.sessionToken = sessionToken;
   next();
 };
+
+// Forgot password endpoint
+router.post('/forgot-password', async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({
+        error: 'Email is required'
+      });
+    }
+
+    // Find user by email
+    const user = users.find(u => u.email === email.trim().toLowerCase());
+    if (!user) {
+      // Don't reveal if email exists for security
+      return res.json({
+        success: true,
+        message: 'If an account with that email exists, a password reset link has been sent.'
+      });
+    }
+
+    // Generate reset token
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour from now
+
+    // Store reset token
+    resetTokens[resetToken] = {
+      userId: user.id,
+      email: user.email,
+      expiresAt: expiresAt
+    };
+
+    console.log(`🔑 Password reset requested for: ${user.email}`);
+
+    // Send reset email
+    const emailResult = await emailService.sendPasswordResetEmail(user.email, user.username, resetToken);
+
+    if (emailResult.success) {
+      console.log(`📧 Password reset email sent to ${user.email}`);
+    } else {
+      console.error(`❌ Failed to send reset email to ${user.email}:`, emailResult.error);
+    }
+
+    res.json({
+      success: true,
+      message: 'If an account with that email exists, a password reset link has been sent.'
+    });
+
+  } catch (error) {
+    console.error('❌ Forgot password error:', error);
+    res.status(500).json({
+      error: 'Failed to process password reset request',
+      message: error.message
+    });
+  }
+});
+
+// Reset password endpoint
+router.post('/reset-password', (req, res) => {
+  try {
+    const { token, newPassword } = req.body;
+
+    if (!token || !newPassword) {
+      return res.status(400).json({
+        error: 'Reset token and new password are required'
+      });
+    }
+
+    // Validate reset token
+    const resetData = resetTokens[token];
+    if (!resetData) {
+      return res.status(400).json({
+        error: 'Invalid or expired reset token'
+      });
+    }
+
+    // Check if token is expired
+    if (new Date() > new Date(resetData.expiresAt)) {
+      delete resetTokens[token]; // Clean up expired token
+      return res.status(400).json({
+        error: 'Reset token has expired. Please request a new password reset.'
+      });
+    }
+
+    // Find user and update password
+    const user = users.find(u => u.id === resetData.userId);
+    if (!user) {
+      return res.status(404).json({
+        error: 'User not found'
+      });
+    }
+
+    // Update password (in production, this should be hashed)
+    user.password = newPassword;
+
+    // Clean up the used token
+    delete resetTokens[token];
+
+    console.log(`✅ Password reset successful for: ${user.email}`);
+
+    res.json({
+      success: true,
+      message: 'Password has been reset successfully. You can now log in with your new password.'
+    });
+
+  } catch (error) {
+    console.error('❌ Reset password error:', error);
+    res.status(500).json({
+      error: 'Failed to reset password',
+      message: error.message
+    });
+  }
+});
 
 // Export for use in other routes
 router.authenticateUser = authenticateUser;

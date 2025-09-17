@@ -637,4 +637,62 @@ router.get('/:id/info', (req, res) => {
   }
 });
 
+// Reorder courses in tournament
+router.put('/:id/reorder-courses', authRouter.authenticateUser, (req, res) => {
+  try {
+    const { id } = req.params;
+    const { courseOrder } = req.body;
+    const user = req.user;
+
+    const tournamentIndex = tournaments.findIndex(t => t.id === id);
+    if (tournamentIndex === -1) {
+      return res.status(404).json({
+        error: 'Tournament not found'
+      });
+    }
+
+    const tournament = tournaments[tournamentIndex];
+
+    // Check if user is the creator
+    if (tournament.createdBy !== user.id) {
+      return res.status(403).json({
+        error: 'Only the tournament creator can reorder courses'
+      });
+    }
+
+    if (!courseOrder || !Array.isArray(courseOrder)) {
+      return res.status(400).json({
+        error: 'Course order array is required'
+      });
+    }
+
+    // Reorder courses based on the provided order
+    const reorderedCourses = [];
+    courseOrder.forEach(courseId => {
+      const course = tournament.courses.find(c => c.id === courseId);
+      if (course) {
+        reorderedCourses.push(course);
+      }
+    });
+
+    // Update the tournament with the new course order
+    tournaments[tournamentIndex].courses = reorderedCourses;
+
+    console.log(`✅ Course order updated for tournament: ${tournament.name} (ID: ${tournament.id}) by ${user.username}`);
+
+    res.json({
+      success: true,
+      tournament: tournaments[tournamentIndex],
+      message: 'Course order updated successfully'
+    });
+
+  } catch (error) {
+    console.error('❌ Reorder courses error:', error);
+    res.status(500).json({
+      error: 'Failed to reorder courses',
+      message: error.message
+    });
+  }
+});
+
 module.exports = router;

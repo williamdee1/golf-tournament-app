@@ -139,17 +139,18 @@ export default function TournamentDetail({ navigation, route, user, sessionToken
   };
 
   const removeCourse = (courseId: string) => {
-    Alert.alert(
-      'Remove Course',
-      'Are you sure you want to remove this course from the tournament?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Remove',
-          style: 'destructive',
-          onPress: async () => {
+    console.log('removeCourse called with courseId:', courseId);
+    console.log('Current courses:', courses);
+    console.log('isExisting:', isExisting, 'tournament:', tournament, 'user:', user, 'sessionToken:', !!sessionToken);
+
+    // Use window.confirm for web compatibility
+    const confirmed = window.confirm('Are you sure you want to remove this course from the tournament?');
+    if (confirmed) {
+      (async () => {
+            console.log('Remove confirmed, executing removal logic...');
             // If this is an existing tournament, remove from backend
             if (isExisting && tournament && user && sessionToken) {
+              console.log('Attempting to remove from backend...');
               try {
                 const response = await fetch(API_ENDPOINTS.removeCourse(tournament.id, courseId), {
                   method: 'DELETE',
@@ -173,12 +174,14 @@ export default function TournamentDetail({ navigation, route, user, sessionToken
               }
             } else {
               // For new tournaments, just remove from local state
-              setCourses(courses.filter(course => course.id !== courseId));
+              console.log('Removing from local state, courseId:', courseId);
+              console.log('Courses before filter:', courses.map(c => ({ id: c.id, name: c.name })));
+              const filteredCourses = courses.filter(course => course.id !== courseId);
+              console.log('Courses after filter:', filteredCourses.map(c => ({ id: c.id, name: c.name })));
+              setCourses(filteredCourses);
             }
-          }
-        }
-      ]
-    );
+      })();
+    }
   };
 
   const setTeeSelection = async (courseId: string, teeIndex: number) => {
@@ -208,6 +211,58 @@ export default function TournamentDetail({ navigation, route, user, sessionToken
     } catch (error) {
       console.error('Set tee selection error:', error);
       Alert.alert('Error', 'Failed to set tee selection. Please try again.');
+    }
+  };
+
+  const moveCourse = async (courseId: string, direction: 'up' | 'down') => {
+    const currentIndex = courses.findIndex(c => c.id === courseId);
+    if (currentIndex === -1) return;
+
+    const newIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+    if (newIndex < 0 || newIndex >= courses.length) return;
+
+    // Create new array with moved course
+    const newCourses = [...courses];
+    const [movedCourse] = newCourses.splice(currentIndex, 1);
+    newCourses.splice(newIndex, 0, movedCourse);
+
+    setCourses(newCourses);
+
+    // If this is an existing tournament, update the course order on the backend
+    if (isExisting && tournament && user && sessionToken) {
+      try {
+        const response = await fetch(API_ENDPOINTS.reorderCourses(tournament.id), {
+          method: 'PUT',
+          headers: {
+            'Authorization': `Bearer ${sessionToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ courseOrder: newCourses.map(course => course.id) }),
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+          setTournament(result.tournament);
+        } else {
+          // If backend update fails, revert to previous order
+          loadTournamentData();
+          if (typeof window !== 'undefined') {
+            window.alert('Failed to save course order. Reverting changes.');
+          } else {
+            Alert.alert('Error', 'Failed to save course order. Reverting changes.');
+          }
+        }
+      } catch (error) {
+        console.error('Error updating course order:', error);
+        // Revert to previous order
+        loadTournamentData();
+        if (typeof window !== 'undefined') {
+          window.alert('Failed to save course order. Reverting changes.');
+        } else {
+          Alert.alert('Error', 'Failed to save course order. Reverting changes.');
+        }
+      }
     }
   };
 
@@ -261,6 +316,7 @@ export default function TournamentDetail({ navigation, route, user, sessionToken
     }
   };
 
+
   return (
     <ScrollView style={styles.container}>
       <View style={styles.header}>
@@ -295,7 +351,7 @@ export default function TournamentDetail({ navigation, route, user, sessionToken
             <Text style={styles.emptySubtext}>Tap the + button to add your first course</Text>
           </View>
         ) : (
-          courses.map((course) => {
+          courses.map((course, courseIndex) => {
             const isCreator = tournament?.createdBy === user?.id;
             console.log('Creator check:', {
               tournamentCreatedBy: tournament?.createdBy,
@@ -308,6 +364,28 @@ export default function TournamentDetail({ navigation, route, user, sessionToken
 
             return (
               <View key={course.id} style={styles.courseCard}>
+                {/* Course Order Controls */}
+                {courses.length > 1 && (
+                  <View style={styles.orderControls}>
+                    <TouchableOpacity
+                      style={[styles.orderButton, courseIndex === 0 && styles.disabledOrderButton]}
+                      onPress={() => moveCourse(course.id, 'up')}
+                      disabled={courseIndex === 0}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.orderButtonText, courseIndex === 0 && styles.disabledOrderButtonText]}>↑</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.orderButton, courseIndex === courses.length - 1 && styles.disabledOrderButton]}
+                      onPress={() => moveCourse(course.id, 'down')}
+                      disabled={courseIndex === courses.length - 1}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.orderButtonText, courseIndex === courses.length - 1 && styles.disabledOrderButtonText]}>↓</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+
                 {/* Main content area */}
                 <TouchableOpacity
                   style={styles.courseInfo}
@@ -319,9 +397,6 @@ export default function TournamentDetail({ navigation, route, user, sessionToken
                   })}
                 >
                   <Text style={styles.courseName}>{course.name}</Text>
-                  {course.location && course.location !== 'Unknown location' && (
-                    <Text style={styles.courseLocation}>{course.location}</Text>
-                  )}
                   <Text style={styles.courseDetails}>
                     {course.holes.length} holes • Par {course.totalPar}
                   </Text>
@@ -332,7 +407,7 @@ export default function TournamentDetail({ navigation, route, user, sessionToken
                   )}
                 </TouchableOpacity>
 
-                {/* Tee Selection Buttons are now outside the main TouchableOpacity */}
+                {/* Tee Selection Buttons */}
                 {isCreator && course.tees && course.tees.length > 1 && (
                   <View style={styles.teeSelectionContainer}>
                     <Text style={styles.teeSelectionLabel}>Select Tee:</Text>
@@ -365,23 +440,23 @@ export default function TournamentDetail({ navigation, route, user, sessionToken
                   </View>
                 )}
 
-                {/* Delete Course Button - styled like tee buttons */}
-                <View style={styles.deleteButtonContainer}>
-                  <TouchableOpacity
-                    style={styles.deleteButton}
-                    onPress={() => {
-                      console.log('Delete button successfully clicked for course:', course.id);
-                      removeCourse(course.id);
-                    }}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={styles.deleteButtonText}>Remove Course</Text>
-                  </TouchableOpacity>
-                </View>
+                {/* Delete Course Button */}
+                <TouchableOpacity
+                  style={styles.deleteCourseButton}
+                  onPress={() => {
+                    console.log('Delete button pressed for course:', course.id, course.name);
+                    removeCourse(course.id);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.deleteCourseButtonText}>Delete</Text>
+                </TouchableOpacity>
+
               </View>
             );
           })
         )}
+
       </View>
 
       {/* Player Leaderboard Section */}
@@ -559,6 +634,7 @@ export default function TournamentDetail({ navigation, route, user, sessionToken
         </View>
       )}
 
+
       <View style={styles.actions}>
         {!tournament && !isExisting && (
           <TouchableOpacity
@@ -573,7 +649,19 @@ export default function TournamentDetail({ navigation, route, user, sessionToken
         )}
 
         {(tournament || isExisting) && (
-          <TouchableOpacity style={styles.shareButton}>
+          <TouchableOpacity
+            style={styles.shareButton}
+            onPress={async () => {
+              const idToCopy = tournament?.id || tournamentId;
+              try {
+                await navigator.clipboard.writeText(idToCopy);
+                window.alert(`Tournament ID "${idToCopy}" copied to clipboard!`);
+              } catch (error) {
+                console.error('Failed to copy to clipboard:', error);
+                window.alert(`Tournament ID: ${idToCopy}\n\nCopy this ID manually to share.`);
+              }
+            }}
+          >
             <Text style={styles.shareButtonText}>
               Share Tournament ID: {tournament?.id || tournamentId}
             </Text>
@@ -597,11 +685,11 @@ export default function TournamentDetail({ navigation, route, user, sessionToken
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Add Course</Text>
-            <Text style={styles.modalSubtitle}>Enter the name of the golf course</Text>
+            <Text style={styles.modalSubtitle}>Enter the course scorecard URL</Text>
 
             <TextInput
               style={styles.urlInput}
-              placeholder="e.g., Pebble Beach Golf Links, Augusta National"
+              placeholder="e.g., https://algarvegolf.net/pinheirosaltos/scorecard.htm or https://www.golfify.io/courses/woburn-golf-club-duchess"
               value={courseUrl}
               onChangeText={setCourseUrl}
               autoCapitalize="words"
@@ -717,6 +805,7 @@ const styles = StyleSheet.create({
   },
   courseInfo: {
     paddingRight: 40,
+    paddingLeft: 60,
   },
   courseActions: {
     flexDirection: 'row',
@@ -757,23 +846,6 @@ const styles = StyleSheet.create({
   },
   teeButtonText: {
     fontSize: 14,
-  },
-  deleteButtonContainer: {
-    marginTop: 10,
-    alignItems: 'flex-end',
-  },
-  deleteButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    borderWidth: 2,
-    borderColor: '#ff4444',
-    backgroundColor: '#ff4444',
-  },
-  deleteButtonText: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: 'white',
   },
   actions: {
     padding: 20,
@@ -1008,5 +1080,46 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  deleteCourseButton: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    backgroundColor: '#ff4444',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+  },
+  deleteCourseButtonText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  orderControls: {
+    position: 'absolute',
+    left: 10,
+    top: 15,
+    flexDirection: 'column',
+    zIndex: 10,
+  },
+  orderButton: {
+    backgroundColor: 'rgba(46, 125, 50, 0.1)',
+    borderRadius: 4,
+    width: 30,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 2,
+  },
+  disabledOrderButton: {
+    backgroundColor: 'rgba(200, 200, 200, 0.1)',
+  },
+  orderButtonText: {
+    color: '#2e7d32',
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  disabledOrderButtonText: {
+    color: '#ccc',
   },
 });
