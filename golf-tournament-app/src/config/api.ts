@@ -10,19 +10,23 @@ const PRODUCTION_API_URL = envProductionUrl && envProductionUrl !== 'http://loca
   ? envProductionUrl
   : FALLBACK_PRODUCTION_URL;
 
-// Environment detection
-const isLocalhost = typeof window !== 'undefined' && window.location.hostname === 'localhost';
-const isDevelopment = process.env.NODE_ENV === 'development' || isLocalhost;
+// Force production URL for any non-localhost deployment
+const isLocalhost = typeof window !== 'undefined' && (
+  window.location.hostname === 'localhost' ||
+  window.location.hostname === '127.0.0.1' ||
+  window.location.hostname.includes('localhost')
+);
 
-export const API_BASE_URL = isDevelopment ? DEVELOPMENT_API_URL : PRODUCTION_API_URL;
+// Use production URL unless explicitly on localhost
+export const API_BASE_URL = isLocalhost ? DEVELOPMENT_API_URL : PRODUCTION_API_URL;
 
 // Debug logging
 console.log('API Configuration:', {
+  hostname: typeof window !== 'undefined' ? window.location.hostname : 'undefined',
   EXPO_PUBLIC_API_URL: process.env.EXPO_PUBLIC_API_URL,
   NODE_ENV: process.env.NODE_ENV,
   envProductionUrl,
   PRODUCTION_API_URL,
-  isDevelopment,
   isLocalhost,
   finalApiUrl: API_BASE_URL
 });
