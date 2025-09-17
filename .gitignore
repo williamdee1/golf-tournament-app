@@ -50,3 +50,6 @@ temp/
 
 # Nested git repositories (handle separately)
 golf-tournament-app/.git/
+
+# Internal documentation (keep local only)
+CLAUDE.md
