@@ -394,12 +394,13 @@ async function scrapeGolfifyScorecard(url) {
     if (process.env.NODE_ENV === 'production' || process.env.RAILWAY_ENVIRONMENT || process.env.HEROKU_APP_NAME) {
       console.log('🚀 Configuring Puppeteer for production environment');
 
-      // Try common production browser paths
+      // Try common production browser paths (Railway/Nix specific paths first)
       const productionPaths = [
-        '/usr/bin/chromium-browser',
-        '/usr/bin/chromium',
-        '/usr/bin/google-chrome-stable',
-        '/usr/bin/google-chrome'
+        '/nix/store/*/bin/chromium',        // Nix package path for Railway
+        '/usr/bin/chromium',                // Standard Linux path
+        '/usr/bin/chromium-browser',        // Alternative Linux path
+        '/usr/bin/google-chrome-stable',    // Google Chrome stable
+        '/usr/bin/google-chrome'            // Google Chrome
       ];
 
       let executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || process.env.CHROME_BIN;
@@ -407,11 +408,28 @@ async function scrapeGolfifyScorecard(url) {
       // If no explicit path, try to find browser in production
       if (!executablePath) {
         const fs = require('fs');
-        for (const path of productionPaths) {
-          if (fs.existsSync(path)) {
-            executablePath = path;
-            console.log(`📍 Found browser at: ${path}`);
-            break;
+
+        // First try to find Nix Chromium using glob pattern
+        try {
+          const { execSync } = require('child_process');
+          const nixChromiumPath = execSync('find /nix/store -name chromium -type f -executable 2>/dev/null | head -1', { encoding: 'utf8' }).trim();
+          if (nixChromiumPath && fs.existsSync(nixChromiumPath)) {
+            executablePath = nixChromiumPath;
+            console.log(`📍 Found Nix Chromium at: ${nixChromiumPath}`);
+          }
+        } catch (e) {
+          console.log('⚠️ Could not find Nix Chromium, trying standard paths');
+        }
+
+        // If Nix path not found, try standard paths
+        if (!executablePath) {
+          for (const path of productionPaths) {
+            if (path.includes('*')) continue; // Skip wildcard paths
+            if (fs.existsSync(path)) {
+              executablePath = path;
+              console.log(`📍 Found browser at: ${path}`);
+              break;
+            }
           }
         }
       }
