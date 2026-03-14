@@ -29,6 +29,8 @@ export default function TournamentDetail({ navigation, route, user, sessionToken
   const [tournament, setTournament] = useState<any>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isLoadingTournament, setIsLoadingTournament] = useState(false);
+  const [editingCourse, setEditingCourse] = useState<Course | null>(null);
+  const [editHoles, setEditHoles] = useState<any[]>([]);
 
   // Load existing tournament data when component mounts
   useEffect(() => {
@@ -139,18 +141,12 @@ export default function TournamentDetail({ navigation, route, user, sessionToken
   };
 
   const removeCourse = (courseId: string) => {
-    console.log('removeCourse called with courseId:', courseId);
-    console.log('Current courses:', courses);
-    console.log('isExisting:', isExisting, 'tournament:', tournament, 'user:', user, 'sessionToken:', !!sessionToken);
-
     // Use window.confirm for web compatibility
     const confirmed = window.confirm('Are you sure you want to remove this course from the tournament?');
     if (confirmed) {
       (async () => {
-            console.log('Remove confirmed, executing removal logic...');
             // If this is an existing tournament, remove from backend
             if (isExisting && tournament && user && sessionToken) {
-              console.log('Attempting to remove from backend...');
               try {
                 const response = await fetch(API_ENDPOINTS.removeCourse(tournament.id, courseId), {
                   method: 'DELETE',
@@ -174,10 +170,7 @@ export default function TournamentDetail({ navigation, route, user, sessionToken
               }
             } else {
               // For new tournaments, just remove from local state
-              console.log('Removing from local state, courseId:', courseId);
-              console.log('Courses before filter:', courses.map(c => ({ id: c.id, name: c.name })));
               const filteredCourses = courses.filter(course => course.id !== courseId);
-              console.log('Courses after filter:', filteredCourses.map(c => ({ id: c.id, name: c.name })));
               setCourses(filteredCourses);
             }
       })();
@@ -245,35 +238,57 @@ export default function TournamentDetail({ navigation, route, user, sessionToken
         if (result.success) {
           setTournament(result.tournament);
         } else {
-          // If backend update fails, revert to previous order
           loadTournamentData();
-          if (typeof window !== 'undefined') {
-            window.alert('Failed to save course order. Reverting changes.');
-          } else {
-            Alert.alert('Error', 'Failed to save course order. Reverting changes.');
-          }
+          window.alert('Failed to save course order. Reverting changes.');
         }
       } catch (error) {
         console.error('Error updating course order:', error);
-        // Revert to previous order
         loadTournamentData();
-        if (typeof window !== 'undefined') {
-          window.alert('Failed to save course order. Reverting changes.');
-        } else {
-          Alert.alert('Error', 'Failed to save course order. Reverting changes.');
-        }
+        window.alert('Failed to save course order. Reverting changes.');
       }
     }
+  };
+
+  const openEditModal = (course: Course) => {
+    setEditingCourse(course);
+    setEditHoles(course.holes.map(h => ({ ...h })));
+  };
+
+  const saveEditedCourse = async () => {
+    if (!editingCourse) return;
+
+    const updatedCourse = { ...editingCourse, holes: editHoles, totalPar: editHoles.reduce((s, h) => s + (parseInt(h.par) || 0), 0) };
+
+    if (isExisting && tournament && user && sessionToken) {
+      try {
+        const response = await fetch(API_ENDPOINTS.updateCourse(tournament.id, editingCourse.id), {
+          method: 'PUT',
+          headers: { 'Authorization': `Bearer ${sessionToken}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ holes: editHoles }),
+        });
+        const data = await response.json();
+        if (data.success) {
+          setTournament(data.tournament);
+          setCourses(data.tournament.courses);
+        } else {
+          Alert.alert('Error', data.error || 'Failed to save course changes');
+          return;
+        }
+      } catch (error) {
+        Alert.alert('Error', 'Failed to connect to server.');
+        return;
+      }
+    } else {
+      setCourses(prev => prev.map(c => c.id === editingCourse.id ? updatedCourse : c));
+    }
+
+    setEditingCourse(null);
+    setEditHoles([]);
   };
 
   const startTournament = async () => {
     if (!user || !sessionToken) {
       Alert.alert('Error', 'You must be logged in to create tournaments');
-      return;
-    }
-
-    if (courses.length === 0) {
-      Alert.alert('Error', 'Please add at least one course to the tournament');
       return;
     }
 
@@ -318,26 +333,32 @@ export default function TournamentDetail({ navigation, route, user, sessionToken
 
 
   return (
-    <ScrollView style={styles.container}>
+    <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
+
+      {/* Header */}
       <View style={styles.header}>
+        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+          <Text style={styles.backButtonText}>← Back</Text>
+        </TouchableOpacity>
         <Text style={styles.title}>{tournamentName}</Text>
-        {tournament?.id ? (
-          <Text style={styles.tournamentId}>Tournament ID: {tournament.id}</Text>
-        ) : isExisting ? (
-          <Text style={styles.tournamentId}>Tournament ID: {tournamentId}</Text>
+        {(tournament?.id || isExisting) ? (
+          <View style={styles.idBadge}>
+            <Text style={styles.idBadgeText}>ID: {tournament?.id || tournamentId}</Text>
+          </View>
         ) : (
-          <Text style={styles.subtitle}>Add courses and start your tournament</Text>
+          <Text style={styles.headerSubtitle}>Add courses and start your tournament</Text>
         )}
       </View>
 
+      {/* Courses Section */}
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Courses ({courses.length})</Text>
+          <Text style={styles.sectionTitle}>COURSES ({courses.length})</Text>
           <TouchableOpacity
             style={styles.addButton}
             onPress={() => setShowAddCourseModal(true)}
           >
-            <Text style={styles.addButtonText}>+</Text>
+            <Text style={styles.addButtonText}>+ Add</Text>
           </TouchableOpacity>
         </View>
 
@@ -347,303 +368,297 @@ export default function TournamentDetail({ navigation, route, user, sessionToken
           </View>
         ) : courses.length === 0 ? (
           <View style={styles.emptyState}>
+            <Text style={styles.emptyIcon}>⛳</Text>
             <Text style={styles.emptyText}>No courses added yet</Text>
-            <Text style={styles.emptySubtext}>Tap the + button to add your first course</Text>
+            <Text style={styles.emptySubtext}>Tap Add to include your first course</Text>
           </View>
         ) : (
           courses.map((course, courseIndex) => {
             const isCreator = tournament?.createdBy === user?.id;
-            console.log('Creator check:', {
-              tournamentCreatedBy: tournament?.createdBy,
-              userId: user?.id,
-              isCreator: isCreator,
-              tournament: tournament?.name
-            });
             const selectedTeeIndex = tournament?.courseSettings?.[course.id]?.selectedTeeIndex || 0;
             const selectedTee = course.tees?.[selectedTeeIndex] || course.tees?.[0];
 
             return (
               <View key={course.id} style={styles.courseCard}>
-                {/* Course Order Controls */}
-                {courses.length > 1 && (
-                  <View style={styles.orderControls}>
-                    <TouchableOpacity
-                      style={[styles.orderButton, courseIndex === 0 && styles.disabledOrderButton]}
-                      onPress={() => moveCourse(course.id, 'up')}
-                      disabled={courseIndex === 0}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={[styles.orderButtonText, courseIndex === 0 && styles.disabledOrderButtonText]}>↑</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.orderButton, courseIndex === courses.length - 1 && styles.disabledOrderButton]}
-                      onPress={() => moveCourse(course.id, 'down')}
-                      disabled={courseIndex === courses.length - 1}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={[styles.orderButtonText, courseIndex === courses.length - 1 && styles.disabledOrderButtonText]}>↓</Text>
-                    </TouchableOpacity>
-                  </View>
-                )}
+                <View style={styles.courseAccent} />
+                <View style={styles.courseCardContent}>
 
-                {/* Main content area */}
-                <TouchableOpacity
-                  style={styles.courseInfo}
-                  onPress={() => navigation.navigate('CourseScorecard', {
-                    course: course,
-                    tournamentId: tournament?.id || tournamentId,
-                    tournamentName: tournamentName,
-                    selectedTeeIndex: selectedTeeIndex
-                  })}
-                >
-                  <Text style={styles.courseName}>{course.name}</Text>
-                  <Text style={styles.courseDetails}>
-                    {course.holes.length} holes • Par {course.totalPar}
-                  </Text>
-                  {selectedTee && (
-                    <Text style={styles.selectedTeeText}>
-                      Selected Tee: {selectedTee.name}
-                    </Text>
-                  )}
-                </TouchableOpacity>
-
-                {/* Tee Selection Buttons */}
-                {isCreator && course.tees && course.tees.length > 1 && (
-                  <View style={styles.teeSelectionContainer}>
-                    <Text style={styles.teeSelectionLabel}>Select Tee:</Text>
-                    <View style={styles.teeButtonsRow}>
-                      {course.tees.map((tee, index) => {
-                        const isSelected = selectedTeeIndex === index;
-                        return (
-                          <TouchableOpacity
-                            key={index}
-                            style={[
-                              styles.teeSelectionButton,
-                              isSelected && styles.teeSelectionButtonSelected
-                            ]}
-                            onPress={() => {
-                              console.log('Tee selected:', index, tee.name);
-                              setTeeSelection(course.id, index);
-                            }}
-                            activeOpacity={0.7}
-                          >
-                            <Text style={[
-                              styles.teeSelectionButtonText,
-                              isSelected && styles.teeSelectionButtonTextSelected
-                            ]}>
-                              {tee.name}
-                            </Text>
-                          </TouchableOpacity>
-                        );
-                      })}
+                  {/* Course Order Controls */}
+                  {courses.length > 1 && (
+                    <View style={styles.orderControls}>
+                      <TouchableOpacity
+                        style={[styles.orderButton, courseIndex === 0 && styles.disabledOrderButton]}
+                        onPress={() => moveCourse(course.id, 'up')}
+                        disabled={courseIndex === 0}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={[styles.orderButtonText, courseIndex === 0 && styles.disabledOrderButtonText]}>↑</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.orderButton, courseIndex === courses.length - 1 && styles.disabledOrderButton]}
+                        onPress={() => moveCourse(course.id, 'down')}
+                        disabled={courseIndex === courses.length - 1}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={[styles.orderButtonText, courseIndex === courses.length - 1 && styles.disabledOrderButtonText]}>↓</Text>
+                      </TouchableOpacity>
                     </View>
+                  )}
+
+                  {/* Course Info (tappable) */}
+                  <TouchableOpacity
+                    style={styles.courseInfo}
+                    onPress={() => navigation.navigate('CourseScorecard', {
+                      course: course,
+                      tournamentId: tournament?.id || tournamentId,
+                      tournamentName: tournamentName,
+                      selectedTeeIndex: selectedTeeIndex
+                    })}
+                  >
+                    <Text style={styles.courseName}>{course.name}</Text>
+                    <View style={styles.courseChips}>
+                      <View style={styles.chip}>
+                        <Text style={styles.chipText}>{course.holes.length} holes</Text>
+                      </View>
+                      <View style={styles.chip}>
+                        <Text style={styles.chipText}>Par {course.totalPar}</Text>
+                      </View>
+                      {selectedTee && (
+                        <View style={[styles.chip, styles.teeChip]}>
+                          <Text style={[styles.chipText, styles.teeChipText]}>{selectedTee.name}</Text>
+                        </View>
+                      )}
+                    </View>
+                  </TouchableOpacity>
+
+                  {/* Tee Selection Buttons */}
+                  {isCreator && course.tees && course.tees.length > 1 && (
+                    <View style={styles.teeSelectionContainer}>
+                      <Text style={styles.teeSelectionLabel}>Select Tee:</Text>
+                      <View style={styles.teeButtonsRow}>
+                        {course.tees.map((tee, index) => {
+                          const isSelected = selectedTeeIndex === index;
+                          return (
+                            <TouchableOpacity
+                              key={index}
+                              style={[
+                                styles.teeSelectionButton,
+                                isSelected && styles.teeSelectionButtonSelected
+                              ]}
+                              onPress={() => setTeeSelection(course.id, index)}
+                              activeOpacity={0.7}
+                            >
+                              <Text style={[
+                                styles.teeSelectionButtonText,
+                                isSelected && styles.teeSelectionButtonTextSelected
+                              ]}>
+                                {tee.name}
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    </View>
+                  )}
+
+                  {/* Edit / Delete Course Buttons */}
+                  <View style={styles.courseButtonRow}>
+                    <TouchableOpacity
+                      style={styles.editCourseButton}
+                      onPress={() => openEditModal(course)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.editCourseButtonText}>Edit</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.deleteCourseButton}
+                      onPress={() => removeCourse(course.id)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.deleteCourseButtonText}>Delete</Text>
+                    </TouchableOpacity>
                   </View>
-                )}
 
-                {/* Delete Course Button */}
-                <TouchableOpacity
-                  style={styles.deleteCourseButton}
-                  onPress={() => {
-                    console.log('Delete button pressed for course:', course.id, course.name);
-                    removeCourse(course.id);
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.deleteCourseButtonText}>Delete</Text>
-                </TouchableOpacity>
-
+                </View>
               </View>
             );
           })
         )}
-
       </View>
 
       {/* Player Leaderboard Section */}
       {(tournament || isExisting) && courses.length > 0 && (
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Player Leaderboard</Text>
+          <Text style={styles.sectionTitle}>LEADERBOARD</Text>
 
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            <View style={styles.leaderboard}>
-              {/* Header Row */}
-              <View style={styles.leaderboardRow}>
-                <View style={styles.playerNameHeader}>
-                  <Text style={styles.leaderboardHeaderText}>Player</Text>
-                </View>
-                {courses.map((course, index) => (
-                  <View key={course.id} style={styles.courseHeader}>
-                    <Text style={styles.leaderboardHeaderText} numberOfLines={2}>
-                      {course.name}
-                    </Text>
+          <View style={styles.leaderboardCard}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.leaderboardScrollContent}>
+              <View style={styles.leaderboard}>
+                {/* Header Row */}
+                <View style={[styles.leaderboardRow, styles.leaderboardHeaderRow]}>
+                  <View style={styles.playerNameHeader}>
+                    <Text style={styles.leaderboardHeaderText}>Player</Text>
                   </View>
-                ))}
-                <View style={styles.scoreHeader}>
-                  <Text style={styles.leaderboardHeaderText}>Birdies</Text>
+                  {courses.map((course, index) => (
+                    <View key={course.id} style={styles.courseHeader}>
+                      <Text style={styles.leaderboardHeaderText} numberOfLines={2}>
+                        {course.name}
+                      </Text>
+                    </View>
+                  ))}
+                  <View style={styles.scoreHeader}>
+                    <Text style={styles.leaderboardHeaderText}>Birdies</Text>
+                  </View>
+                  <View style={styles.scoreHeader}>
+                    <Text style={styles.leaderboardHeaderText}>Points</Text>
+                  </View>
+                  <View style={styles.scoreHeader}>
+                    <Text style={styles.leaderboardHeaderText}>To Par</Text>
+                  </View>
                 </View>
-                <View style={styles.scoreHeader}>
-                  <Text style={styles.leaderboardHeaderText}>Points</Text>
-                </View>
-                <View style={styles.scoreHeader}>
-                  <Text style={styles.leaderboardHeaderText}>To Par</Text>
-                </View>
-              </View>
 
-              {/* Player Rows */}
-              {tournament?.players && tournament.players.length > 0 ? tournament.players.map((player: any) => {
-                // Helper function to calculate Stableford points
-                const calculateStablefordPoints = (score: number | undefined, holePar: number, holeHandicap: number, courseHandicapValue: number): number => {
-                  if (!score || courseHandicapValue === undefined) return 0;
+                {/* Player Rows */}
+                {tournament?.players && tournament.players.length > 0 ? tournament.players.map((player: any) => {
+                  // Helper function to calculate Stableford points
+                  const calculateStablefordPoints = (score: number | undefined, holePar: number, holeHandicap: number, courseHandicapValue: number): number => {
+                    if (!score || courseHandicapValue === undefined) return 0;
 
-                  // Calculate if player gets a stroke on this hole
-                  const strokesReceived = courseHandicapValue >= holeHandicap ? 1 : 0;
-                  const adjustedPar = holePar + strokesReceived;
+                    const strokesReceived = Math.floor(courseHandicapValue / 18) + (holeHandicap <= (courseHandicapValue % 18) ? 1 : 0);
+                    const adjustedPar = holePar + strokesReceived;
+                    const difference = score - adjustedPar;
 
-                  // Stableford scoring:
-                  const difference = score - adjustedPar;
+                    if (difference <= -4) return 6;
+                    if (difference === -3) return 5;
+                    if (difference === -2) return 4;
+                    if (difference === -1) return 3;
+                    if (difference === 0) return 2;
+                    if (difference === 1) return 1;
+                    return 0;
+                  };
 
-                  if (difference <= -4) return 6; // 4+ under
-                  if (difference === -3) return 5; // 3 under
-                  if (difference === -2) return 4; // 2 under (Eagle)
-                  if (difference === -1) return 3; // 1 under (Birdie)
-                  if (difference === 0) return 2;  // Par
-                  if (difference === 1) return 1;  // 1 over (Bogey)
-                  return 0; // 2+ over (Double bogey or worse)
-                };
+                  const playerScores = courses.map(course => {
+                    const courseScores = tournament.scores?.[player.id]?.[course.id];
+                    if (!courseScores) return null;
+                    const totalScore = Object.values(courseScores).reduce((sum: number, score: any) => {
+                      return sum + (typeof score === 'number' ? score : 0);
+                    }, 0);
+                    return totalScore;
+                  });
 
-                // Calculate player's scores
-                const playerScores = courses.map(course => {
-                  const courseScores = tournament.scores?.[player.id]?.[course.id];
-                  if (!courseScores) return null;
-
-                  // Sum up all hole scores for this course
-                  const totalScore = Object.values(courseScores).reduce((sum: number, score: any) => {
-                    return sum + (typeof score === 'number' ? score : 0);
+                  const totalBirdies = courses.reduce((birdieSum, course) => {
+                    const courseScores = tournament.scores?.[player.id]?.[course.id];
+                    if (!courseScores) return birdieSum;
+                    return birdieSum + course.holes.reduce((courseBirdies: number, hole: any, holeIndex: number) => {
+                      const holeScore = courseScores[hole.number || (holeIndex + 1)];
+                      const holePar = hole.par;
+                      if (typeof holeScore === 'number' && holeScore < holePar) {
+                        return courseBirdies + 1;
+                      }
+                      return courseBirdies;
+                    }, 0);
                   }, 0);
-                  return totalScore;
-                });
 
-                // Calculate total birdies across all courses
-                const totalBirdies = courses.reduce((birdieSum, course) => {
-                  const courseScores = tournament.scores?.[player.id]?.[course.id];
-                  if (!courseScores) return birdieSum;
-
-                  // Count birdies (score < par for each hole)
-                  return birdieSum + course.holes.reduce((courseBirdies: number, hole: any, holeIndex: number) => {
-                    const holeScore = courseScores[hole.number || (holeIndex + 1)];
-                    const holePar = hole.par;
-                    if (typeof holeScore === 'number' && holeScore < holePar) {
-                      return courseBirdies + 1;
-                    }
-                    return courseBirdies;
-                  }, 0);
-                }, 0);
-
-                // Calculate total Stableford points across all courses
-                const totalStablefordPoints = courses.reduce((pointsSum, course) => {
-                  const courseScores = tournament.scores?.[player.id]?.[course.id];
-                  const playerHandicap = tournament.handicaps?.[player.id]?.[course.id] || 0;
-                  if (!courseScores) return pointsSum;
-
-                  // Calculate Stableford points for each hole on this course
-                  return pointsSum + course.holes.reduce((coursePoints: number, hole: any, holeIndex: number) => {
-                    const holeScore = courseScores[hole.number || (holeIndex + 1)];
-                    if (typeof holeScore === 'number') {
-                      return coursePoints + calculateStablefordPoints(holeScore, hole.par, hole.handicap, playerHandicap);
-                    }
-                    return coursePoints;
-                  }, 0);
-                }, 0);
-
-                // Calculate total score and par across all courses for score-to-par calculation
-                let totalScore = 0;
-                let totalPar = 0;
-                courses.forEach(course => {
-                  const courseScores = tournament.scores?.[player.id]?.[course.id];
-                  if (courseScores) {
-                    course.holes.forEach((hole: any, holeIndex: number) => {
+                  const totalStablefordPoints = courses.reduce((pointsSum, course) => {
+                    const courseScores = tournament.scores?.[player.id]?.[course.id];
+                    const playerHandicap = tournament.handicaps?.[player.id]?.[course.id] || 0;
+                    if (!courseScores) return pointsSum;
+                    return pointsSum + course.holes.reduce((coursePoints: number, hole: any, holeIndex: number) => {
                       const holeScore = courseScores[hole.number || (holeIndex + 1)];
                       if (typeof holeScore === 'number') {
-                        totalScore += holeScore;
-                        totalPar += hole.par;
+                        return coursePoints + calculateStablefordPoints(holeScore, hole.par, hole.handicap, playerHandicap);
                       }
-                    });
-                  }
-                });
+                      return coursePoints;
+                    }, 0);
+                  }, 0);
 
-                const scoreToPar = totalScore - totalPar;
-                const scoreToParText = totalScore === 0 ? '-' :
-                                     scoreToPar === 0 ? 'E' :
-                                     scoreToPar > 0 ? `+${scoreToPar}` :
-                                     `${scoreToPar}`;
+                  let totalScore = 0;
+                  let totalPar = 0;
+                  courses.forEach(course => {
+                    const courseScores = tournament.scores?.[player.id]?.[course.id];
+                    if (courseScores) {
+                      course.holes.forEach((hole: any, holeIndex: number) => {
+                        const holeScore = courseScores[hole.number || (holeIndex + 1)];
+                        if (typeof holeScore === 'number') {
+                          totalScore += holeScore;
+                          totalPar += hole.par;
+                        }
+                      });
+                    }
+                  });
 
-                return (
-                  <View key={player.id} style={styles.leaderboardRow}>
-                    <View style={styles.playerNameCell}>
-                      <Text style={styles.playerNameText}>{player.username}</Text>
-                    </View>
-                    {playerScores.map((score, index) => {
-                      const course = courses[index];
-                      const selectedTeeIndex = tournament?.courseSettings?.[course.id]?.selectedTeeIndex || 0;
+                  const scoreToPar = totalScore - totalPar;
+                  const scoreToParText = totalScore === 0 ? '-' :
+                                       scoreToPar === 0 ? 'E' :
+                                       scoreToPar > 0 ? `+${scoreToPar}` :
+                                       `${scoreToPar}`;
 
-                      return (
-                        <TouchableOpacity
-                          key={index}
-                          style={styles.scoreCell}
-                          onPress={() => {
-                            if (score !== null) {
-                              // Navigate to scorecard for this player and course
-                              navigation.navigate('CourseScorecard', {
-                                course: course,
-                                tournamentId: tournament?.id || tournamentId,
-                                tournamentName: tournamentName,
-                                selectedTeeIndex: selectedTeeIndex,
-                                viewingPlayer: player // Pass the player we're viewing
-                              });
-                            }
-                          }}
-                          activeOpacity={score !== null ? 0.7 : 1}
-                        >
-                          <Text style={[
-                            styles.scoreText,
-                            score !== null && styles.clickableScoreText
-                          ]}>
-                            {score !== null ? score : '-'}
-                          </Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                    <View style={styles.scoreCell}>
-                      <Text style={styles.birdieText}>{totalBirdies}</Text>
+                  return (
+                    <View key={player.id} style={styles.leaderboardRow}>
+                      <View style={styles.playerNameCell}>
+                        <Text style={styles.playerNameText}>{player.username}</Text>
+                      </View>
+                      {playerScores.map((score, index) => {
+                        const course = courses[index];
+                        const selectedTeeIndex = tournament?.courseSettings?.[course.id]?.selectedTeeIndex || 0;
+
+                        return (
+                          <TouchableOpacity
+                            key={index}
+                            style={styles.scoreCell}
+                            onPress={() => {
+                              if (score !== null) {
+                                navigation.navigate('CourseScorecard', {
+                                  course: course,
+                                  tournamentId: tournament?.id || tournamentId,
+                                  tournamentName: tournamentName,
+                                  selectedTeeIndex: selectedTeeIndex,
+                                  viewingPlayer: player
+                                });
+                              }
+                            }}
+                            activeOpacity={score !== null ? 0.7 : 1}
+                          >
+                            <Text style={[
+                              styles.scoreText,
+                              score !== null && styles.clickableScoreText
+                            ]}>
+                              {score !== null ? score : '-'}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                      <View style={styles.scoreCell}>
+                        <Text style={styles.birdieText}>{totalBirdies}</Text>
+                      </View>
+                      <View style={styles.scoreCell}>
+                        <Text style={styles.pointsText}>{totalStablefordPoints > 0 ? totalStablefordPoints : '-'}</Text>
+                      </View>
+                      <View style={styles.scoreCell}>
+                        <Text style={styles.toParText}>{scoreToParText}</Text>
+                      </View>
                     </View>
-                    <View style={styles.scoreCell}>
-                      <Text style={styles.pointsText}>{totalStablefordPoints > 0 ? totalStablefordPoints : '-'}</Text>
-                    </View>
-                    <View style={styles.scoreCell}>
-                      <Text style={styles.toParText}>{scoreToParText}</Text>
-                    </View>
+                  );
+                }) : (
+                  <View style={styles.emptyState}>
+                    <Text style={styles.emptyText}>No players have joined yet</Text>
                   </View>
-                );
-              }) : (
-                <View style={styles.emptyState}>
-                  <Text style={styles.emptyText}>No players have joined yet</Text>
-                </View>
-              )}
-            </View>
-          </ScrollView>
+                )}
+              </View>
+            </ScrollView>
+          </View>
         </View>
       )}
 
-
+      {/* Action Buttons */}
       <View style={styles.actions}>
         {!tournament && !isExisting && (
           <TouchableOpacity
-            style={[styles.button, (courses.length === 0 || isSaving) && styles.disabledButton]}
-            disabled={courses.length === 0 || isSaving}
+            style={[styles.primaryButton, isSaving && styles.disabledButton]}
+            disabled={isSaving}
             onPress={startTournament}
           >
-            <Text style={styles.buttonText}>
-              {isSaving ? 'Creating Tournament...' : 'Start Tournament'}
+            <Text style={styles.primaryButtonText}>
+              {isSaving ? 'Creating Tournament...' : '🏆  Start Tournament'}
             </Text>
           </TouchableOpacity>
         )}
@@ -663,19 +678,81 @@ export default function TournamentDetail({ navigation, route, user, sessionToken
             }}
           >
             <Text style={styles.shareButtonText}>
-              Share Tournament ID: {tournament?.id || tournamentId}
+              Share ID: {tournament?.id || tournamentId}
             </Text>
           </TouchableOpacity>
         )}
-
-        <TouchableOpacity
-          style={styles.secondaryButton}
-          onPress={() => navigation.goBack()}
-        >
-          <Text style={styles.secondaryButtonText}>Back to Edit</Text>
-        </TouchableOpacity>
       </View>
 
+      {/* Edit Course Modal */}
+      <Modal
+        visible={!!editingCourse}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setEditingCourse(null)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { maxHeight: '85%' }]}>
+            <Text style={styles.modalTitle}>Edit Course</Text>
+            <Text style={styles.modalSubtitle}>{editingCourse?.name}</Text>
+
+            <View style={styles.editHoleHeader}>
+              <Text style={[styles.editHoleHeaderText, { width: 40 }]}>Hole</Text>
+              <Text style={[styles.editHoleHeaderText, { width: 60 }]}>Par</Text>
+              <Text style={[styles.editHoleHeaderText, { width: 60 }]}>SI</Text>
+            </View>
+
+            <ScrollView style={{ maxHeight: 400 }}>
+              {editHoles.map((hole, idx) => (
+                <View key={hole.number} style={styles.editHoleRow}>
+                  <Text style={styles.editHoleNumber}>{hole.number}</Text>
+                  <TextInput
+                    style={styles.editHoleInput}
+                    value={hole.par !== null && hole.par !== undefined ? String(hole.par) : ''}
+                    onChangeText={val => {
+                      const updated = [...editHoles];
+                      updated[idx] = { ...updated[idx], par: val === '' ? null : parseInt(val) || null };
+                      setEditHoles(updated);
+                    }}
+                    keyboardType="numeric"
+                    maxLength={1}
+                    placeholder="-"
+                  />
+                  <TextInput
+                    style={styles.editHoleInput}
+                    value={hole.handicap !== null && hole.handicap !== undefined ? String(hole.handicap) : ''}
+                    onChangeText={val => {
+                      const updated = [...editHoles];
+                      updated[idx] = { ...updated[idx], handicap: val === '' ? null : parseInt(val) || null };
+                      setEditHoles(updated);
+                    }}
+                    keyboardType="numeric"
+                    maxLength={2}
+                    placeholder="-"
+                  />
+                </View>
+              ))}
+            </ScrollView>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={styles.modalCancelButton}
+                onPress={() => setEditingCourse(null)}
+              >
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.modalAddButton}
+                onPress={saveEditedCourse}
+              >
+                <Text style={styles.modalAddText}>Save Changes</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Add Course Modal */}
       <Modal
         visible={showAddCourseModal}
         animationType="slide"
@@ -719,6 +796,7 @@ export default function TournamentDetail({ navigation, route, user, sessionToken
           </View>
         </View>
       </Modal>
+
     </ScrollView>
   );
 }
@@ -726,103 +804,172 @@ export default function TournamentDetail({ navigation, route, user, sessionToken
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: '#f2f5f2',
   },
+  scrollContent: {
+    paddingBottom: 40,
+  },
+
+  // Header
   header: {
+    backgroundColor: '#1b5e20',
     padding: 20,
     paddingTop: 60,
-    backgroundColor: '#f8f9fa',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e9ecef',
+    paddingBottom: 28,
+  },
+  backButton: {
+    marginBottom: 16,
+  },
+  backButtonText: {
+    color: 'rgba(255,255,255,0.75)',
+    fontSize: 14,
+    fontWeight: '500',
   },
   title: {
-    fontSize: 28,
+    fontSize: 30,
     fontWeight: 'bold',
-    color: '#2e7d32',
-    marginBottom: 5,
+    color: '#ffffff',
+    marginBottom: 12,
   },
-  tournamentId: {
+  headerSubtitle: {
     fontSize: 14,
-    color: '#666',
+    color: 'rgba(255,255,255,0.7)',
   },
-  subtitle: {
-    fontSize: 14,
-    color: '#666',
+  idBadge: {
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    alignSelf: 'flex-start',
   },
+  idBadgeText: {
+    color: 'rgba(255,255,255,0.9)',
+    fontSize: 13,
+    fontWeight: '600',
+    letterSpacing: 0.5,
+  },
+
+  // Sections
   section: {
     padding: 20,
+    paddingBottom: 4,
   },
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 15,
+    marginBottom: 14,
   },
   sectionTitle: {
-    fontSize: 20,
+    fontSize: 13,
     fontWeight: 'bold',
-    color: '#333',
+    color: '#1b5e20',
+    letterSpacing: 1,
+    marginBottom: 14,
   },
   addButton: {
-    backgroundColor: '#4caf50',
-    width: 40,
-    height: 40,
+    backgroundColor: '#1b5e20',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
     borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   addButtonText: {
     color: 'white',
-    fontSize: 24,
+    fontSize: 14,
     fontWeight: 'bold',
   },
+
+  // Empty / loading states
   emptyState: {
     alignItems: 'center',
-    padding: 40,
+    padding: 36,
+    backgroundColor: 'white',
+    borderRadius: 16,
+  },
+  emptyIcon: {
+    fontSize: 40,
+    marginBottom: 12,
   },
   emptyText: {
-    fontSize: 18,
-    color: '#666',
-    marginBottom: 5,
-  },
-  emptySubtext: {
-    fontSize: 14,
-    color: '#999',
-  },
-  loadingText: {
-    fontSize: 16,
-    color: '#666',
+    fontSize: 17,
+    color: '#555',
+    fontWeight: '600',
+    marginBottom: 6,
     textAlign: 'center',
   },
+  emptySubtext: {
+    fontSize: 13,
+    color: '#999',
+    textAlign: 'center',
+  },
+  loadingText: {
+    fontSize: 15,
+    color: '#666',
+    textAlign: 'center',
+    padding: 30,
+  },
+
+  // Course cards
   courseCard: {
-    backgroundColor: '#f8f9fa',
-    borderRadius: 12,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: '#e9ecef',
-    padding: 15,
-    position: 'relative',
+    backgroundColor: 'white',
+    borderRadius: 14,
+    marginBottom: 12,
+    flexDirection: 'row',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
+    overflow: 'hidden',
+  },
+  courseAccent: {
+    width: 5,
+    backgroundColor: '#2e7d32',
+  },
+  courseCardContent: {
+    flex: 1,
+    padding: 14,
   },
   courseInfo: {
-    paddingRight: 40,
-    paddingLeft: 60,
-  },
-  courseActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 15,
-    paddingLeft: 0,
-  },
-  courseName: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#2e7d32',
+    paddingLeft: 38,
+    paddingRight: 8,
     marginBottom: 4,
   },
+  courseName: {
+    fontSize: 17,
+    fontWeight: 'bold',
+    color: '#1a2e1b',
+    marginBottom: 8,
+  },
+  courseChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  chip: {
+    backgroundColor: '#f0f4f0',
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+  },
+  chipText: {
+    fontSize: 12,
+    color: '#4a6741',
+    fontWeight: '500',
+  },
+  teeChip: {
+    backgroundColor: '#e8f5e9',
+    borderWidth: 1,
+    borderColor: '#81c784',
+  },
+  teeChipText: {
+    color: '#2e7d32',
+    fontWeight: '600',
+  },
   courseLocation: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 6,
+    fontSize: 13,
+    color: '#777',
+    marginBottom: 4,
   },
   courseDetails: {
     fontSize: 12,
@@ -835,60 +982,254 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     marginTop: 4,
   },
-  teeButton: {
-    backgroundColor: '#4caf50',
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+
+  // Tee selection
+  teeSelectionContainer: {
+    marginTop: 14,
+    paddingLeft: 38,
+  },
+  teeSelectionLabel: {
+    fontSize: 13,
+    fontWeight: 'bold',
+    color: '#1b5e20',
+    marginBottom: 8,
+  },
+  teeButtonsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  teeSelectionButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 7,
+    borderRadius: 20,
+    borderWidth: 2,
+    borderColor: '#ddd',
+    backgroundColor: '#fafafa',
+    marginRight: 8,
+    marginBottom: 8,
+  },
+  teeSelectionButtonSelected: {
+    borderColor: '#2e7d32',
+    backgroundColor: '#2e7d32',
+  },
+  teeSelectionButtonText: {
+    fontSize: 13,
+    fontWeight: 'bold',
+    color: '#666',
+  },
+  teeSelectionButtonTextSelected: {
+    color: 'white',
+  },
+
+  // Course action buttons
+  courseButtonRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    marginTop: 12,
+    gap: 8,
+  },
+  editCourseButton: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1.5,
+    borderColor: '#1976d2',
+  },
+  editCourseButtonText: {
+    color: '#1976d2',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  deleteCourseButton: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1.5,
+    borderColor: '#e53935',
+  },
+  deleteCourseButtonText: {
+    color: '#e53935',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+
+  // Order controls
+  orderControls: {
+    position: 'absolute',
+    left: 8,
+    top: 14,
+    flexDirection: 'column',
+    zIndex: 10,
+  },
+  orderButton: {
+    backgroundColor: 'rgba(46,125,50,0.1)',
+    borderRadius: 4,
+    width: 28,
+    height: 22,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 8,
+    marginBottom: 3,
   },
-  teeButtonText: {
-    fontSize: 14,
+  disabledOrderButton: {
+    backgroundColor: 'rgba(200,200,200,0.15)',
   },
+  orderButtonText: {
+    color: '#2e7d32',
+    fontSize: 13,
+    fontWeight: 'bold',
+  },
+  disabledOrderButtonText: {
+    color: '#ccc',
+  },
+
+  // Leaderboard
+  leaderboardCard: {
+    backgroundColor: 'white',
+    borderRadius: 14,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
+    marginBottom: 12,
+    alignSelf: 'center',
+  },
+  leaderboardScrollContent: {
+    flexGrow: 1,
+    justifyContent: 'center',
+  },
+  leaderboard: {
+    padding: 0,
+  },
+  leaderboardHeaderRow: {
+    backgroundColor: '#1b5e20',
+    paddingVertical: 10,
+  },
+  leaderboardRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+    paddingVertical: 10,
+  },
+  playerNameHeader: {
+    width: 120,
+    paddingHorizontal: 14,
+  },
+  courseHeader: {
+    width: 95,
+    paddingHorizontal: 6,
+    alignItems: 'center',
+    marginHorizontal: 1,
+  },
+  scoreHeader: {
+    width: 72,
+    paddingHorizontal: 4,
+    alignItems: 'center',
+  },
+  playerNameCell: {
+    width: 120,
+    paddingHorizontal: 14,
+  },
+  scoreCell: {
+    width: 95,
+    paddingHorizontal: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginHorizontal: 1,
+  },
+  leaderboardHeaderText: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: 'rgba(255,255,255,0.9)',
+    textAlign: 'center',
+  },
+  playerNameText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#1a2e1b',
+  },
+  scoreText: {
+    fontSize: 15,
+    color: '#444',
+    textAlign: 'center',
+  },
+  birdieText: {
+    fontSize: 15,
+    color: '#e64a19',
+    fontWeight: 'bold',
+    textAlign: 'center',
+  },
+  pointsText: {
+    fontSize: 15,
+    color: '#7b1fa2',
+    fontWeight: 'bold',
+    textAlign: 'center',
+  },
+  toParText: {
+    fontSize: 15,
+    color: '#1b5e20',
+    fontWeight: 'bold',
+    textAlign: 'center',
+  },
+  clickableScoreText: {
+    color: '#1565c0',
+    textDecorationLine: 'underline',
+  },
+
+  // Action buttons
   actions: {
     padding: 20,
-    paddingTop: 10,
+    paddingTop: 8,
   },
-  button: {
-    backgroundColor: '#2e7d32',
-    padding: 15,
-    borderRadius: 8,
+  primaryButton: {
+    backgroundColor: '#1b5e20',
+    padding: 16,
+    borderRadius: 12,
     alignItems: 'center',
-    marginBottom: 15,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    elevation: 4,
   },
   disabledButton: {
     backgroundColor: '#ccc',
+    shadowOpacity: 0,
+    elevation: 0,
   },
-  buttonText: {
+  primaryButtonText: {
     color: 'white',
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  secondaryButton: {
-    padding: 15,
-    alignItems: 'center',
-  },
-  secondaryButtonText: {
-    color: '#666',
     fontSize: 16,
+    fontWeight: 'bold',
+    letterSpacing: 0.3,
   },
   shareButton: {
-    backgroundColor: '#4caf50',
-    padding: 15,
-    borderRadius: 8,
+    backgroundColor: '#2e7d32',
+    padding: 16,
+    borderRadius: 12,
     alignItems: 'center',
-    marginBottom: 15,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    elevation: 4,
   },
   shareButtonText: {
     color: 'white',
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: 'bold',
+    letterSpacing: 0.3,
   },
+
+  // Modals
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -896,14 +1237,14 @@ const styles = StyleSheet.create({
     backgroundColor: 'white',
     margin: 20,
     padding: 25,
-    borderRadius: 12,
+    borderRadius: 16,
     width: '90%',
     maxWidth: 400,
   },
   modalTitle: {
     fontSize: 22,
     fontWeight: 'bold',
-    color: '#2e7d32',
+    color: '#1b5e20',
     marginBottom: 8,
     textAlign: 'center',
   },
@@ -943,7 +1284,7 @@ const styles = StyleSheet.create({
   },
   modalAddButton: {
     flex: 0.45,
-    backgroundColor: '#2e7d32',
+    backgroundColor: '#1b5e20',
     padding: 15,
     borderRadius: 8,
     alignItems: 'center',
@@ -953,173 +1294,47 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
   },
-  leaderboard: {
-    backgroundColor: '#f8f9fa',
-    borderRadius: 8,
-    padding: 10,
-  },
-  leaderboardRow: {
+
+  // Edit course modal table
+  editHoleHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e9ecef',
-    paddingVertical: 8,
-  },
-  playerNameHeader: {
-    width: 100,
     paddingHorizontal: 8,
-  },
-  courseHeader: {
-    width: 80,
-    paddingHorizontal: 4,
-    alignItems: 'center',
-    backgroundColor: '#e3f2fd',
-    marginHorizontal: 1,
-    borderRadius: 4,
-    paddingVertical: 4,
-  },
-  scoreHeader: {
-    width: 60,
-    paddingHorizontal: 4,
-    alignItems: 'center',
-  },
-  playerNameCell: {
-    width: 100,
-    paddingHorizontal: 8,
-  },
-  scoreCell: {
-    width: 80,
-    paddingHorizontal: 4,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginHorizontal: 1,
-  },
-  leaderboardHeaderText: {
-    fontSize: 12,
-    fontWeight: 'bold',
-    color: '#333',
-    textAlign: 'center',
-  },
-  playerNameText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#2e7d32',
-  },
-  scoreText: {
-    fontSize: 14,
-    color: '#333',
-    textAlign: 'center',
-  },
-  birdieText: {
-    fontSize: 14,
-    color: '#ff6b35',
-    fontWeight: 'bold',
-    textAlign: 'center',
-  },
-  pointsText: {
-    fontSize: 14,
-    color: '#9c27b0',
-    fontWeight: 'bold',
-    textAlign: 'center',
-  },
-  toParText: {
-    fontSize: 14,
-    color: '#2e7d32',
-    fontWeight: 'bold',
-    textAlign: 'center',
-  },
-  clickableScoreText: {
-    color: '#1976d2',
-    textDecorationLine: 'underline',
-  },
-  teeSelectionContainer: {
-    marginTop: 15,
-  },
-  teeSelectionLabel: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#2e7d32',
-    marginBottom: 8,
-  },
-  teeButtonsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  teeSelectionButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    borderWidth: 2,
-    borderColor: '#ddd',
-    backgroundColor: '#f9f9f9',
-    marginRight: 8,
-    marginBottom: 8,
-  },
-  teeSelectionButtonSelected: {
-    borderColor: '#2e7d32',
-    backgroundColor: '#2e7d32',
-  },
-  teeSelectionButtonText: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: '#666',
-  },
-  teeSelectionButtonTextSelected: {
-    color: 'white',
-  },
-  debugDeleteButton: {
-    backgroundColor: 'red',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 6,
-    minWidth: 80,
-    alignItems: 'center',
-  },
-  debugDeleteButtonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  deleteCourseButton: {
-    position: 'absolute',
-    top: 10,
-    right: 10,
-    backgroundColor: '#ff4444',
-    paddingHorizontal: 12,
     paddingVertical: 6,
+    backgroundColor: '#f0f0f0',
     borderRadius: 6,
+    marginBottom: 4,
   },
-  deleteCourseButtonText: {
-    color: 'white',
-    fontSize: 14,
-    fontWeight: '600',
+  editHoleHeaderText: {
+    fontSize: 13,
+    fontWeight: 'bold',
+    color: '#333',
+    textAlign: 'center',
   },
-  orderControls: {
-    position: 'absolute',
-    left: 10,
-    top: 15,
-    flexDirection: 'column',
-    zIndex: 10,
-  },
-  orderButton: {
-    backgroundColor: 'rgba(46, 125, 50, 0.1)',
-    borderRadius: 4,
-    width: 30,
-    height: 20,
-    justifyContent: 'center',
+  editHoleRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 2,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
   },
-  disabledOrderButton: {
-    backgroundColor: 'rgba(200, 200, 200, 0.1)',
-  },
-  orderButtonText: {
-    color: '#2e7d32',
+  editHoleNumber: {
+    width: 40,
     fontSize: 14,
     fontWeight: 'bold',
+    color: '#333',
+    textAlign: 'center',
   },
-  disabledOrderButtonText: {
-    color: '#ccc',
+  editHoleInput: {
+    width: 60,
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 6,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    fontSize: 14,
+    textAlign: 'center',
+    marginHorizontal: 2,
+    backgroundColor: '#fafafa',
   },
 });

@@ -186,11 +186,36 @@ async function scrapeGeneralScorecard(url) {
 
     await page.goto(url, { waitUntil: 'networkidle0', timeout: 30000 });
 
+    // Wait for table data to be populated by JavaScript (cells shouldn't all be "--")
+    try {
+      await page.waitForFunction(() => {
+        const cells = document.querySelectorAll('table td');
+        let nonDashCount = 0;
+        cells.forEach(cell => {
+          const text = cell.textContent.trim();
+          if (text && text !== '--' && text !== '-' && /^\d+$/.test(text)) nonDashCount++;
+        });
+        return nonDashCount > 20; // At least 20 numeric cells loaded
+      }, { timeout: 5000 });
+    } catch (e) {
+      console.log('⚠️ Table data wait timed out, proceeding with current content');
+    }
+
     const html = await page.content();
     const $ = cheerio.load(html);
 
     // Extract course name from page title or headers
-    let courseName = $('title').text().replace(/\s*-\s*Scorecard.*$/i, '').trim();
+    let courseName = $('title').text()
+      .replace(/\s*\|\s*.*/i, '')          // Remove " | SiteName" suffixes
+      .replace(/\s*-\s*Scorecard.*$/i, '') // Remove " - Scorecard..."
+      .replace(/\s*-\s*Detailed.*$/i, '')  // Remove " - Detailed Scorecard..."
+      .trim();
+    // Strip redundant trailing location if it already appears in the club name
+    // e.g. "Woldingham Golf Club - Woldingham" → "Woldingham Golf Club"
+    const trailingLocation = courseName.match(/^(.+?)\s+-\s+(\w+)$/);
+    if (trailingLocation && trailingLocation[1].toLowerCase().includes(trailingLocation[2].toLowerCase())) {
+      courseName = trailingLocation[1].trim();
+    }
     if (!courseName) {
       courseName = $('h1').first().text().trim() || 'Unknown Course';
     }
@@ -209,6 +234,14 @@ async function scrapeGeneralScorecard(url) {
       if (rows.length < 3) return; // Skip small tables
 
       console.log(`🔍 Checking table ${tableIndex + 1} with ${rows.length} rows`);
+      // Dump first 3 rows to see exact cell text
+      rows.each((ri, row) => {
+        if (ri >= 3) return;
+        const cells = $(row).find('td, th');
+        const texts = [];
+        cells.each((ci, cell) => texts.push(`[${ci}]"${$(cell).text().trim()}"`));
+        console.log(`  Row ${ri}: ${texts.join(' | ')}`);
+      });
 
       // Look for header row with tee colors
       let headerRow = null;
@@ -230,10 +263,10 @@ async function scrapeGeneralScorecard(url) {
             headerRow = $row;
           }
 
-          // Look for tee colors
+          // Look for tee colors (only record first occurrence of each color)
           const teeColorsList = ['white', 'yellow', 'red', 'blue', 'black', 'gold', 'green', 'orange', 'purple'];
           for (const color of teeColorsList) {
-            if (text.includes(color)) {
+            if (text.includes(color) && !teeColumnIndexes[color]) {
               teeColumnIndexes[color] = cellIndex;
               if (!teeColors.includes(color)) {
                 teeColors.push(color);
@@ -241,12 +274,18 @@ async function scrapeGeneralScorecard(url) {
             }
           }
 
-          if (text.includes('par')) {
+          // Only record first occurrence of par column
+          if (text === 'par' && parColumnIndex === -1) {
             parColumnIndex = cellIndex;
           }
 
-          if (text.includes('hdcp') || text.includes('handicap') || text.includes('index')) {
+          // Detect handicap/SI column (only first occurrence)
+          if (handicapColumnIndex === -1 && (
+            text.includes('hdcp') || text.includes('handicap') ||
+            text.includes('stroke index') || /^s\.?i\.?$/.test(text)
+          )) {
             handicapColumnIndex = cellIndex;
+            console.log(`📍 SI/HDCP column detected: "${text}" at column ${cellIndex}`);
           }
         });
       });
@@ -308,6 +347,70 @@ async function scrapeGeneralScorecard(url) {
             console.log(`⛳ Hole ${holeNumber}: Par ${hole.par}, HCP ${hole.handicap}, Yardages:`, hole.yardages);
           }
         });
+      } else {
+        // Try transposed format (BluGolf style): columns=holes, rows=tees/par/hdcp
+        let holeColMap = null;
+        let holeNumberRowIndex = -1;
+
+        rows.each((rowIndex, row) => {
+          if (holeColMap) return; // Already found
+
+          const $row = $(row);
+          const cells = $row.find('td, th');
+
+          // Look for a row whose cells contain sequential hole numbers (1-9, 1-18, or 10-18)
+          const tempMap = {};
+          cells.each((colIdx, cell) => {
+            const num = parseInt($(cell).text().trim());
+            if (num >= 1 && num <= 18) tempMap[colIdx] = num;
+          });
+          const nums = Object.values(tempMap).sort((a, b) => a - b);
+          const isConsecutive = nums.length >= 6 && nums.every((n, i) => i === 0 || n === nums[i - 1] + 1);
+          if (isConsecutive) {
+            holeColMap = tempMap;
+            holeNumberRowIndex = rowIndex;
+          }
+        });
+
+        if (holeColMap) {
+          console.log(`✅ Found transposed scorecard (BluGolf style), holes: ${Object.values(holeColMap).join(', ')}`);
+          const teeColorsList = ['white', 'yellow', 'red', 'blue', 'black', 'gold', 'green', 'orange', 'silver'];
+
+          rows.each((rowIndex, row) => {
+            if (rowIndex === holeNumberRowIndex) return; // Skip hole number row
+
+            const $row = $(row);
+            const cells = $row.find('td, th');
+            const rowLabel = cells.first().text().trim().toLowerCase();
+
+            const matchedTee = teeColorsList.find(c => rowLabel.includes(c));
+            const isParRow = rowLabel.includes('par');
+            const isHcpRow = rowLabel.includes('hcp') || rowLabel.includes('hdcp') || rowLabel.includes('handicap') ||
+                             rowLabel.includes('stroke') || rowLabel.includes('index') ||
+                             rowLabel.includes('s.i') || rowLabel === 'si';
+
+            Object.entries(holeColMap).forEach(([colIdx, holeNum]) => {
+              let hole = holes.find(h => h.number === holeNum);
+              if (!hole) {
+                hole = { number: holeNum, par: null, handicap: null, yardages: {} };
+                holes.push(hole);
+              }
+
+              const cellVal = parseInt($(cells[parseInt(colIdx)]).text().trim());
+
+              if (isParRow && cellVal >= 3 && cellVal <= 5) {
+                hole.par = cellVal;
+              } else if (isHcpRow && cellVal >= 1 && cellVal <= 18) {
+                hole.handicap = cellVal;
+              } else if (matchedTee && cellVal >= 50 && cellVal <= 700) {
+                hole.yardages[matchedTee] = cellVal;
+              }
+            });
+          });
+
+          const addedHoles = Object.values(holeColMap).filter(n => holes.find(h => h.number === n && h.par !== null));
+          console.log(`⛳ Added ${addedHoles.length} holes from transposed table`);
+        }
       }
     });
 

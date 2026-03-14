@@ -8,9 +8,16 @@ import TournamentDetail from './src/screens/TournamentDetail';
 import LoginScreen from './src/screens/LoginScreen';
 import CourseScorecard from './src/screens/CourseScorecard';
 
+const SCREEN_LABELS: Record<string, string> = {
+  home: 'Home',
+  TournamentDetail: 'Tournament',
+  CreateTournament: 'Create Tournament',
+};
+
 export default function App() {
   const [currentScreen, setCurrentScreen] = useState('home');
   const [screenParams, setScreenParams] = useState({});
+  const [screenHistory, setScreenHistory] = useState<Array<{screen: string, params: any}>>([]);
   const [user, setUser] = useState(null);
   const [sessionToken, setSessionToken] = useState('');
 
@@ -18,22 +25,32 @@ export default function App() {
     setUser(userData);
     setSessionToken(token);
     setCurrentScreen('home');
+    setScreenHistory([]);
   };
 
   const handleLogout = () => {
     setUser(null);
     setSessionToken('');
     setCurrentScreen('login');
+    setScreenHistory([]);
   };
 
   const navigation = {
     navigate: (screen: string, params?: any) => {
+      setScreenHistory(prev => [...prev, { screen: currentScreen, params: screenParams }]);
       setCurrentScreen(screen);
-      if (params) {
-        setScreenParams(params);
-      }
+      setScreenParams(params || {});
     },
-    goBack: () => setCurrentScreen('home')
+    goBack: () => {
+      if (screenHistory.length > 0) {
+        const prev = screenHistory[screenHistory.length - 1];
+        setScreenHistory(h => h.slice(0, -1));
+        setCurrentScreen(prev.screen);
+        setScreenParams(prev.params);
+      } else {
+        setCurrentScreen('home');
+      }
+    }
   };
 
   const renderScreen = () => {
@@ -62,9 +79,11 @@ export default function App() {
       {user && currentScreen !== 'home' && !currentScreen.includes('login') && (
         <TouchableOpacity
           style={styles.backButton}
-          onPress={() => setCurrentScreen('home')}
+          onPress={navigation.goBack}
         >
-          <Text style={styles.backButtonText}>← Back to Home</Text>
+          <Text style={styles.backButtonText}>
+            ← Back to {SCREEN_LABELS[screenHistory[screenHistory.length - 1]?.screen] || 'Home'}
+          </Text>
         </TouchableOpacity>
       )}
       {renderScreen()}

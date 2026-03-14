@@ -53,3 +53,6 @@ golf-tournament-app/.git/
 
 # Internal documentation (keep local only)
 CLAUDE.md
+
+# Persisted data (local dev only)
+backend/data/

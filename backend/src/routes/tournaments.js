@@ -1,11 +1,21 @@
 const express = require('express');
 const crypto = require('crypto');
 const authRouter = require('./auth');
+const persistence = require('../services/persistence');
 
 const router = express.Router();
 
-// Simple in-memory storage (in production, this would be a proper database)
+// Initialised empty; populated async by initTournaments() at server startup
 let tournaments = [];
+
+const saveTournaments = () => persistence.save('tournaments', tournaments);
+
+const initTournaments = async () => {
+  tournaments = await persistence.load('tournaments', []);
+  console.log(`🏆 ${tournaments.length} tournaments loaded`);
+};
+
+router.initTournaments = initTournaments;
 
 // Helper function to generate tournament ID
 const generateTournamentId = () => {
@@ -29,17 +39,11 @@ router.post('/', authRouter.authenticateUser, (req, res) => {
       });
     }
 
-    if (!courses || !Array.isArray(courses) || courses.length === 0) {
-      return res.status(400).json({
-        error: 'At least one course is required'
-      });
-    }
-
     const tournamentId = generateTournamentId();
     const newTournament = {
       id: tournamentId,
       name: name.trim(),
-      courses: courses,
+      courses: Array.isArray(courses) ? courses : [],
       createdBy: user.id,
       createdByName: user.username,
       createdAt: new Date().toISOString(),
@@ -68,6 +72,9 @@ router.post('/', authRouter.authenticateUser, (req, res) => {
         joinedAt: new Date().toISOString()
       });
     }
+
+    saveTournaments();
+    authRouter.saveUsers();
 
     console.log(`✅ Tournament created: ${name} (ID: ${tournamentId}) by ${user.username}`);
 
@@ -233,6 +240,9 @@ router.post('/:id/join', authRouter.authenticateUser, (req, res) => {
       });
     }
 
+    saveTournaments();
+    authRouter.saveUsers();
+
     console.log(`✅ User ${user.username} joined tournament: ${tournament.name} (ID: ${id})`);
 
     res.json({
@@ -287,6 +297,7 @@ router.post('/:id/courses', authRouter.authenticateUser, (req, res) => {
 
     // Add course to tournament
     tournaments[tournamentIndex].courses.push(course);
+    saveTournaments();
 
     console.log(`✅ Course "${course.name}" added to tournament: ${tournament.name} (ID: ${id}) by ${user.username}`);
 
@@ -338,6 +349,7 @@ router.delete('/:id/courses/:courseId', authRouter.authenticateUser, (req, res) 
 
     const removedCourse = tournaments[tournamentIndex].courses[courseIndex];
     tournaments[tournamentIndex].courses.splice(courseIndex, 1);
+    saveTournaments();
 
     console.log(`✅ Course "${removedCourse.name}" removed from tournament: ${tournament.name} (ID: ${id}) by ${user.username}`);
 
@@ -353,6 +365,49 @@ router.delete('/:id/courses/:courseId', authRouter.authenticateUser, (req, res) 
       error: 'Failed to remove course from tournament',
       message: error.message
     });
+  }
+});
+
+// Update course hole data (par, SI) - any tournament player can edit
+router.put('/:id/courses/:courseId', authRouter.authenticateUser, (req, res) => {
+  try {
+    const { id, courseId } = req.params;
+    const { holes } = req.body;
+    const user = req.user;
+
+    const tournamentIndex = tournaments.findIndex(t => t.id === id);
+    if (tournamentIndex === -1) {
+      return res.status(404).json({ error: 'Tournament not found' });
+    }
+
+    const tournament = tournaments[tournamentIndex];
+    const isPlayer = tournament.players.some(p => p.id === user.id);
+    if (!isPlayer) {
+      return res.status(403).json({ error: 'You are not part of this tournament' });
+    }
+
+    const courseIndex = tournament.courses.findIndex(c => c.id === courseId);
+    if (courseIndex === -1) {
+      return res.status(404).json({ error: 'Course not found in tournament' });
+    }
+
+    if (Array.isArray(holes)) {
+      tournaments[tournamentIndex].courses[courseIndex].holes = holes;
+      const totalPar = holes.reduce((sum, hole) => sum + (hole.par || 0), 0);
+      tournaments[tournamentIndex].courses[courseIndex].totalPar = totalPar;
+      saveTournaments();
+    }
+
+    console.log(`✅ Course "${tournament.courses[courseIndex].name}" updated by ${user.username}`);
+
+    res.json({
+      success: true,
+      message: 'Course updated successfully',
+      tournament: tournaments[tournamentIndex]
+    });
+  } catch (error) {
+    console.error('❌ Update course error:', error);
+    res.status(500).json({ error: 'Failed to update course', message: error.message });
   }
 });
 
@@ -398,6 +453,8 @@ router.delete('/:id', authRouter.authenticateUser, (req, res) => {
 
     // Remove tournament from tournaments array
     tournaments.splice(tournamentIndex, 1);
+    saveTournaments();
+    authRouter.saveUsers();
 
     console.log(`🗑️ Tournament deleted: ${tournament.name} (ID: ${id}) by ${user.username}`);
 
@@ -463,6 +520,7 @@ router.put('/:id/courses/:courseId/tee', authRouter.authenticateUser, (req, res)
       selectedTeeIndex: selectedTeeIndex,
       selectedTee: course.tees[selectedTeeIndex]
     };
+    saveTournaments();
 
     console.log(`✅ Tee selection set for course "${course.name}" in tournament: ${tournament.name} (ID: ${id}) by ${user.username}`);
 
@@ -522,6 +580,7 @@ router.put('/:id/handicap/:courseId', authRouter.authenticateUser, (req, res) =>
 
     // Save the course handicap
     tournaments[tournamentIndex].handicaps[user.id][courseId] = courseHandicap;
+    saveTournaments();
 
     console.log(`✅ Course handicap saved: ${user.username} set handicap ${courseHandicap} for course ${courseId} in tournament ${id}`);
 
@@ -584,6 +643,7 @@ router.put('/:id/scores/:courseId/:holeNumber', authRouter.authenticateUser, (re
 
     // Save the score
     tournaments[tournamentIndex].scores[user.id][courseId][holeNumber] = score;
+    saveTournaments();
 
     console.log(`✅ Score saved: ${user.username} scored ${score} on hole ${holeNumber} of course ${courseId} in tournament ${id}`);
 
@@ -677,6 +737,7 @@ router.put('/:id/reorder-courses', authRouter.authenticateUser, (req, res) => {
 
     // Update the tournament with the new course order
     tournaments[tournamentIndex].courses = reorderedCourses;
+    saveTournaments();
 
     console.log(`✅ Course order updated for tournament: ${tournament.name} (ID: ${tournament.id}) by ${user.username}`);
 

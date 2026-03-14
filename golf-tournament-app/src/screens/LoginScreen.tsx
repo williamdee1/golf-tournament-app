@@ -15,22 +15,14 @@ type Props = {
 
 export default function LoginScreen({ navigation, onLogin }: Props) {
   const [isLogin, setIsLogin] = useState(true);
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
   const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [handicapIndex, setHandicapIndex] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [showForgotPassword, setShowForgotPassword] = useState(false);
-  const [forgotEmail, setForgotEmail] = useState('');
 
   const handleSubmit = async () => {
-    if (!email.trim() || !password.trim()) {
-      Alert.alert('Error', 'Email and password are required');
-      return;
-    }
-
-    if (!isLogin && !username.trim()) {
-      Alert.alert('Error', 'Username is required for registration');
+    if (!username.trim() || !password.trim()) {
+      Alert.alert('Error', 'Username and password are required');
       return;
     }
 
@@ -39,19 +31,12 @@ export default function LoginScreen({ navigation, onLogin }: Props) {
     try {
       const endpoint = isLogin ? API_ENDPOINTS.login : API_ENDPOINTS.register;
       const body = isLogin
-        ? { email: email.trim(), password }
-        : {
-            email: email.trim(),
-            password,
-            username: username.trim(),
-            handicapIndex: handicapIndex ? parseFloat(handicapIndex) : null
-          };
+        ? { username: username.trim(), password }
+        : { username: username.trim(), password, handicapIndex: handicapIndex ? parseFloat(handicapIndex) : null };
 
       const response = await fetch(endpoint, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
 
@@ -72,65 +57,9 @@ export default function LoginScreen({ navigation, onLogin }: Props) {
 
   const toggleMode = () => {
     setIsLogin(!isLogin);
-    setEmail('');
-    setPassword('');
     setUsername('');
+    setPassword('');
     setHandicapIndex('');
-    setShowForgotPassword(false);
-    setForgotEmail('');
-  };
-
-  const handleForgotPassword = async () => {
-    if (!forgotEmail.trim()) {
-      if (typeof window !== 'undefined') {
-        window.alert('Please enter your email address');
-      } else {
-        Alert.alert('Error', 'Please enter your email address');
-      }
-      return;
-    }
-
-    setIsLoading(true);
-
-    try {
-      const response = await fetch(API_ENDPOINTS.forgotPassword, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ email: forgotEmail.trim() }),
-      });
-
-      const data = await response.json();
-
-      if (data.success) {
-        const message = 'If an account with that email exists, a password reset link has been sent to your email.';
-        if (typeof window !== 'undefined') {
-          window.alert(message);
-        } else {
-          Alert.alert('Success', message);
-        }
-        setShowForgotPassword(false);
-        setForgotEmail('');
-      } else {
-        const errorMessage = `Error: ${data.error || 'Failed to send reset email'}`;
-        if (typeof window !== 'undefined') {
-          window.alert(errorMessage);
-        } else {
-          Alert.alert('Error', errorMessage);
-        }
-      }
-    } catch (error) {
-      console.error('Forgot password error:', error);
-      const errorMessage = 'Failed to send reset email. Please try again.';
-      if (typeof window !== 'undefined') {
-        window.alert(errorMessage);
-      } else {
-        Alert.alert('Error', errorMessage);
-      }
-    } finally {
-      setIsLoading(false);
-    }
   };
 
   return (
@@ -141,23 +70,12 @@ export default function LoginScreen({ navigation, onLogin }: Props) {
       </Text>
 
       <View style={styles.form}>
-        {!isLogin && (
-          <TextInput
-            style={styles.input}
-            placeholder="Username"
-            value={username}
-            onChangeText={setUsername}
-            autoCapitalize="none"
-          />
-        )}
-
         <TextInput
           style={styles.input}
-          placeholder="Email"
-          value={email}
-          onChangeText={setEmail}
+          placeholder="Username"
+          value={username}
+          onChangeText={setUsername}
           autoCapitalize="none"
-          keyboardType="email-address"
         />
 
         <TextInput
@@ -179,9 +97,9 @@ export default function LoginScreen({ navigation, onLogin }: Props) {
         )}
 
         <TouchableOpacity
-          style={[styles.button, (!email.trim() || !password.trim() || (!isLogin && !username.trim()) || isLoading) && styles.disabledButton]}
+          style={[styles.button, (!username.trim() || !password.trim() || isLoading) && styles.disabledButton]}
           onPress={handleSubmit}
-          disabled={!email.trim() || !password.trim() || (!isLogin && !username.trim()) || isLoading}
+          disabled={!username.trim() || !password.trim() || isLoading}
         >
           <Text style={styles.buttonText}>
             {isLoading ? 'Please wait...' : (isLogin ? 'Sign In' : 'Create Account')}
@@ -193,90 +111,25 @@ export default function LoginScreen({ navigation, onLogin }: Props) {
             {isLogin ? "Don't have an account? Sign up" : "Already have an account? Sign in"}
           </Text>
         </TouchableOpacity>
-
-        {/* Forgot Password Link (only show on login) */}
-        {isLogin && !showForgotPassword && (
-          <TouchableOpacity
-            style={styles.forgotPasswordLink}
-            onPress={() => setShowForgotPassword(true)}
-          >
-            <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
-          </TouchableOpacity>
-        )}
-
-        {/* Forgot Password Form */}
-        {showForgotPassword && (
-          <View style={styles.forgotPasswordSection}>
-            <Text style={styles.forgotPasswordTitle}>Reset Password</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Enter your email address"
-              value={forgotEmail}
-              onChangeText={setForgotEmail}
-              autoCapitalize="none"
-              keyboardType="email-address"
-            />
-            <View style={styles.forgotPasswordButtons}>
-              <TouchableOpacity
-                style={[styles.button, styles.forgotPasswordButton]}
-                onPress={handleForgotPassword}
-                disabled={isLoading}
-              >
-                <Text style={styles.buttonText}>
-                  {isLoading ? 'Sending...' : 'Send Reset Link'}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.button, styles.cancelButton]}
-                onPress={() => {
-                  setShowForgotPassword(false);
-                  setForgotEmail('');
-                }}
-              >
-                <Text style={styles.cancelButtonText}>Cancel</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        )}
       </View>
 
       {/* Demo users for testing (development only) */}
       {isDevelopment && (
         <View style={styles.demoSection}>
-        <Text style={styles.demoTitle}>
-          {isLogin ? 'Demo Login Accounts:' : 'Demo Registration Data:'}
-        </Text>
-        <TouchableOpacity
-          style={styles.demoButton}
-          onPress={() => {
-            setEmail('test1@example.com');
-            setPassword('password123');
-            if (!isLogin) {
-              setUsername('TestPlayer1');
-              setHandicapIndex('15.2');
-            }
-          }}
-        >
-          <Text style={styles.demoButtonText}>
-            {isLogin ? 'Login as TestPlayer1' : 'Fill TestPlayer1 Data'}
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.demoButton}
-          onPress={() => {
-            setEmail('test2@example.com');
-            setPassword('password123');
-            if (!isLogin) {
-              setUsername('TestPlayer2');
-              setHandicapIndex('8.5');
-            }
-          }}
-        >
-          <Text style={styles.demoButtonText}>
-            {isLogin ? 'Login as TestPlayer2' : 'Fill TestPlayer2 Data'}
-          </Text>
-        </TouchableOpacity>
-      </View>
+          <Text style={styles.demoTitle}>Demo Accounts:</Text>
+          <TouchableOpacity
+            style={styles.demoButton}
+            onPress={() => { setUsername('TestPlayer1'); setPassword('password123'); }}
+          >
+            <Text style={styles.demoButtonText}>Login as TestPlayer1</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.demoButton}
+            onPress={() => { setUsername('TestPlayer2'); setPassword('password123'); }}
+          >
+            <Text style={styles.demoButtonText}>Login as TestPlayer2</Text>
+          </TouchableOpacity>
+        </View>
       )}
     </View>
   );
@@ -359,50 +212,5 @@ const styles = StyleSheet.create({
   demoButtonText: {
     color: '#666',
     fontSize: 12,
-  },
-  forgotPasswordLink: {
-    padding: 10,
-    alignItems: 'center',
-    marginTop: 10,
-  },
-  forgotPasswordText: {
-    color: '#2e7d32',
-    fontSize: 14,
-    textDecorationLine: 'underline',
-  },
-  forgotPasswordSection: {
-    marginTop: 20,
-    padding: 20,
-    backgroundColor: '#f5f5f5',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#ddd',
-  },
-  forgotPasswordTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    textAlign: 'center',
-    marginBottom: 15,
-    color: '#333',
-  },
-  forgotPasswordButtons: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 10,
-  },
-  forgotPasswordButton: {
-    flex: 1,
-    marginRight: 10,
-    backgroundColor: '#ff6b35',
-  },
-  cancelButton: {
-    flex: 1,
-    marginLeft: 10,
-    backgroundColor: '#ccc',
-  },
-  cancelButtonText: {
-    color: '#333',
-    fontSize: 18,
-    fontWeight: 'bold',
   },
 });

@@ -14,11 +14,12 @@ if (typeof globalThis.File === 'undefined') {
   };
 }
 
+dotenv.config();
+
+const persistence = require('./services/persistence');
 const golfRoutes = require('./routes/golf');
 const authRoutes = require('./routes/auth');
 const tournamentRoutes = require('./routes/tournaments');
-
-dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -38,8 +39,21 @@ app.get('/api/test', (req, res) => {
   });
 });
 
-app.listen(PORT, () => {
-  console.log(`🚀 Golf Tournament Backend running on port ${PORT}`);
-  console.log(`📊 BluGolf scraping functionality enabled`);
-  console.log(`🔗 API available at http://localhost:${PORT}/api`);
-});
+async function startServer() {
+  try {
+    await persistence.initialize();
+    await authRoutes.initUsers();
+    await tournamentRoutes.initTournaments();
+
+    app.listen(PORT, () => {
+      console.log(`🚀 Golf Tournament Backend running on port ${PORT}`);
+      console.log(`📊 BluGolf scraping functionality enabled`);
+      console.log(`🔗 API available at http://localhost:${PORT}/api`);
+    });
+  } catch (err) {
+    console.error('❌ Failed to start server:', err.message);
+    process.exit(1);
+  }
+}
+
+startServer();

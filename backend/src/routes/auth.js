@@ -1,45 +1,49 @@
 const express = require('express');
 const crypto = require('crypto');
-const emailService = require('../services/emailService');
+const persistence = require('../services/persistence');
 
 const router = express.Router();
 
-// Simple in-memory storage (in production, this would be a proper database)
+// Initialised empty; populated async by initUsers() at server startup
 let users = [];
 let sessions = {};
-let resetTokens = {}; // Format: { token: { userId, email, expiresAt } }
 
-// Initialize with test users for demo purposes (development only)
+const saveUsers = () => persistence.save('users', users);
+
+const initUsers = async () => {
+  const loaded = await persistence.load('users', []);
+  // Modify in-place so external references (authRouter.users in tournaments.js) stay valid
+  users.length = 0;
+  users.push(...loaded);
+  initializeTestUsers();
+  console.log(`👤 ${users.length} users loaded`);
+};
+
+// Initialize with test users for demo purposes
 const initializeTestUsers = () => {
-  if (users.length === 0 && process.env.NODE_ENV === 'development') {
+  if (users.length === 0) {
     users.push({
       id: 'test-user-1',
-      username: 'testuser',
-      email: 'test@golf.com',
+      username: 'TestPlayer1',
       password: 'password123',
-      handicapIndex: 18.5,
+      handicapIndex: 15.2,
       createdAt: new Date().toISOString(),
       tournaments: []
     });
 
     users.push({
       id: 'test-user-2',
-      username: 'demo',
-      email: 'demo@golf.com',
-      password: 'demo123',
-      handicapIndex: 12.3,
+      username: 'TestPlayer2',
+      password: 'password123',
+      handicapIndex: 8.5,
       createdAt: new Date().toISOString(),
       tournaments: []
     });
 
-    console.log('✅ Test users initialized (development mode)');
-  } else if (process.env.NODE_ENV === 'production') {
-    console.log('🔒 Production mode - no test users created');
+    saveUsers();
+    console.log('✅ Test users initialized');
   }
 };
-
-// Initialize test users on startup (development only)
-initializeTestUsers();
 
 // Helper function to generate user ID
 const generateUserId = () => crypto.randomBytes(16).toString('hex');
@@ -50,56 +54,48 @@ const generateSessionToken = () => crypto.randomBytes(32).toString('hex');
 // Register new user
 router.post('/register', (req, res) => {
   try {
-    const { username, email, password, handicapIndex } = req.body;
+    const { username, password, handicapIndex } = req.body;
 
-    if (!username || !email || !password) {
+    if (!username || !password) {
       return res.status(400).json({
-        error: 'Username, email, and password are required'
+        error: 'Username and password are required'
       });
     }
 
-    // Check if user already exists
-    const existingUser = users.find(u => u.email === email || u.username === username);
+    // Check if username is taken
+    const existingUser = users.find(u => u.username.toLowerCase() === username.trim().toLowerCase());
     if (existingUser) {
       return res.status(409).json({
-        error: 'User with this email or username already exists'
+        error: 'Username already taken'
       });
     }
 
-    // Create new user
     const userId = generateUserId();
     const newUser = {
       id: userId,
       username: username.trim(),
-      email: email.trim().toLowerCase(),
-      password: password, // In production, this should be hashed
+      password: password,
       handicapIndex: parseFloat(handicapIndex) || null,
       createdAt: new Date().toISOString(),
       tournaments: []
     };
 
     users.push(newUser);
+    saveUsers();
 
-    // Create session
     const sessionToken = generateSessionToken();
     sessions[sessionToken] = {
       userId: userId,
       createdAt: new Date().toISOString()
     };
 
-    console.log(`✅ User registered: ${username} (${email})`);
-
-    // Send welcome email (async, don't wait for it)
-    emailService.sendWelcomeEmail(newUser.email, newUser.username)
-      .then(() => console.log(`📧 Welcome email sent to ${newUser.email}`))
-      .catch(error => console.error(`❌ Failed to send welcome email to ${newUser.email}:`, error.message));
+    console.log(`✅ User registered: ${username}`);
 
     res.json({
       success: true,
       user: {
         id: userId,
         username: newUser.username,
-        email: newUser.email,
         handicapIndex: newUser.handicapIndex
       },
       sessionToken
@@ -117,37 +113,34 @@ router.post('/register', (req, res) => {
 // Login user
 router.post('/login', (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { username, password } = req.body;
 
-    if (!email || !password) {
+    if (!username || !password) {
       return res.status(400).json({
-        error: 'Email and password are required'
+        error: 'Username and password are required'
       });
     }
 
-    // Find user
-    const user = users.find(u => u.email === email.trim().toLowerCase());
+    const user = users.find(u => u.username.toLowerCase() === username.trim().toLowerCase());
     if (!user || user.password !== password) {
       return res.status(401).json({
-        error: 'Invalid email or password'
+        error: 'Invalid username or password'
       });
     }
 
-    // Create session
     const sessionToken = generateSessionToken();
     sessions[sessionToken] = {
       userId: user.id,
       createdAt: new Date().toISOString()
     };
 
-    console.log(`✅ User logged in: ${user.username} (${user.email})`);
+    console.log(`✅ User logged in: ${user.username}`);
 
     res.json({
       success: true,
       user: {
         id: user.id,
         username: user.username,
-        email: user.email,
         handicapIndex: user.handicapIndex
       },
       sessionToken
@@ -187,7 +180,6 @@ router.get('/me', (req, res) => {
       user: {
         id: user.id,
         username: user.username,
-        email: user.email,
         handicapIndex: user.handicapIndex
       }
     });
@@ -249,123 +241,11 @@ const authenticateUser = (req, res, next) => {
   next();
 };
 
-// Forgot password endpoint
-router.post('/forgot-password', async (req, res) => {
-  try {
-    const { email } = req.body;
-
-    if (!email) {
-      return res.status(400).json({
-        error: 'Email is required'
-      });
-    }
-
-    // Find user by email
-    const user = users.find(u => u.email === email.trim().toLowerCase());
-    if (!user) {
-      // Don't reveal if email exists for security
-      return res.json({
-        success: true,
-        message: 'If an account with that email exists, a password reset link has been sent.'
-      });
-    }
-
-    // Generate reset token
-    const resetToken = crypto.randomBytes(32).toString('hex');
-    const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour from now
-
-    // Store reset token
-    resetTokens[resetToken] = {
-      userId: user.id,
-      email: user.email,
-      expiresAt: expiresAt
-    };
-
-    console.log(`🔑 Password reset requested for: ${user.email}`);
-
-    // Send reset email
-    const emailResult = await emailService.sendPasswordResetEmail(user.email, user.username, resetToken);
-
-    if (emailResult.success) {
-      console.log(`📧 Password reset email sent to ${user.email}`);
-    } else {
-      console.error(`❌ Failed to send reset email to ${user.email}:`, emailResult.error);
-    }
-
-    res.json({
-      success: true,
-      message: 'If an account with that email exists, a password reset link has been sent.'
-    });
-
-  } catch (error) {
-    console.error('❌ Forgot password error:', error);
-    res.status(500).json({
-      error: 'Failed to process password reset request',
-      message: error.message
-    });
-  }
-});
-
-// Reset password endpoint
-router.post('/reset-password', (req, res) => {
-  try {
-    const { token, newPassword } = req.body;
-
-    if (!token || !newPassword) {
-      return res.status(400).json({
-        error: 'Reset token and new password are required'
-      });
-    }
-
-    // Validate reset token
-    const resetData = resetTokens[token];
-    if (!resetData) {
-      return res.status(400).json({
-        error: 'Invalid or expired reset token'
-      });
-    }
-
-    // Check if token is expired
-    if (new Date() > new Date(resetData.expiresAt)) {
-      delete resetTokens[token]; // Clean up expired token
-      return res.status(400).json({
-        error: 'Reset token has expired. Please request a new password reset.'
-      });
-    }
-
-    // Find user and update password
-    const user = users.find(u => u.id === resetData.userId);
-    if (!user) {
-      return res.status(404).json({
-        error: 'User not found'
-      });
-    }
-
-    // Update password (in production, this should be hashed)
-    user.password = newPassword;
-
-    // Clean up the used token
-    delete resetTokens[token];
-
-    console.log(`✅ Password reset successful for: ${user.email}`);
-
-    res.json({
-      success: true,
-      message: 'Password has been reset successfully. You can now log in with your new password.'
-    });
-
-  } catch (error) {
-    console.error('❌ Reset password error:', error);
-    res.status(500).json({
-      error: 'Failed to reset password',
-      message: error.message
-    });
-  }
-});
-
 // Export for use in other routes
 router.authenticateUser = authenticateUser;
 router.users = users;
 router.sessions = sessions;
+router.saveUsers = saveUsers;
+router.initUsers = initUsers;
 
 module.exports = router;

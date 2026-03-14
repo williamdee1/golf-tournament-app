@@ -27,8 +27,6 @@ export const API_ENDPOINTS = {
   // Authentication
   login: `${API_BASE_URL}/api/auth/login`,
   register: `${API_BASE_URL}/api/auth/register`,
-  forgotPassword: `${API_BASE_URL}/api/auth/forgot-password`,
-  resetPassword: `${API_BASE_URL}/api/auth/reset-password`,
 
   // Tournaments
   tournaments: `${API_BASE_URL}/api/tournaments`,
@@ -42,6 +40,7 @@ export const API_ENDPOINTS = {
   // Courses  
   addCourse: (tournamentId: string) => `${API_BASE_URL}/api/tournaments/${tournamentId}/courses`,
   removeCourse: (tournamentId: string, courseId: string) => `${API_BASE_URL}/api/tournaments/${tournamentId}/courses/${courseId}`,
+  updateCourse: (tournamentId: string, courseId: string) => `${API_BASE_URL}/api/tournaments/${tournamentId}/courses/${courseId}`,
   setTee: (tournamentId: string, courseId: string) => `${API_BASE_URL}/api/tournaments/${tournamentId}/courses/${courseId}/tee`,
 
   // Scoring

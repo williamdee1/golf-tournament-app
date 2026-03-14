@@ -162,8 +162,8 @@ export default function CourseScorecard({ navigation, route, user, sessionToken 
   const calculateStablefordPoints = (score: number | undefined, holePar: number, holeHandicap: number, courseHandicapValue: number): number => {
     if (!score || courseHandicapValue === undefined) return 0;
 
-    // Calculate if player gets a stroke on this hole
-    const strokesReceived = courseHandicapValue >= holeHandicap ? 1 : 0;
+    // Calculate strokes received: base strokes for every full 18, plus extra on hardest holes
+    const strokesReceived = Math.floor(courseHandicapValue / 18) + (holeHandicap <= (courseHandicapValue % 18) ? 1 : 0);
     const adjustedPar = holePar + strokesReceived;
 
     // Stableford scoring:
@@ -212,7 +212,7 @@ export default function CourseScorecard({ navigation, route, user, sessionToken 
     const courseHandicapValue = parseInt(courseHandicap) || 0;
 
     return (
-      <ScrollView horizontal showsHorizontalScrollIndicator={true}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={true} contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }}>
         <View style={styles.holesContainer}>
           {holes.map((hole, index) => {
             const holeNumber = hole.number || (startIndex + index + 1);
@@ -230,7 +230,7 @@ export default function CourseScorecard({ navigation, route, user, sessionToken 
                 <Text style={styles.holeLabel}>Par</Text>
 
                 <Text style={styles.hcpText}>{hole.handicap || '-'}</Text>
-                <Text style={styles.holeLabel}>HCP</Text>
+                <Text style={styles.holeLabel}>SI</Text>
 
                 {teeHole?.yardage && (
                   <>
