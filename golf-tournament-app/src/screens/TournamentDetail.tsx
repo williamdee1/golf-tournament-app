@@ -1094,11 +1094,10 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 3,
     marginBottom: 12,
-    alignSelf: 'center',
+    width: '100%',
   },
   leaderboardScrollContent: {
     flexGrow: 1,
-    justifyContent: 'center',
   },
   leaderboard: {
     padding: 0,
