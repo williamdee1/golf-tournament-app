@@ -34,6 +34,7 @@ export default function TournamentDetail({ navigation, route, user, sessionToken
   const [showScorecardModal, setShowScorecardModal] = useState(false);
   const [scorecardModalCourse, setScorecardModalCourse] = useState<Course | null>(null);
   const [scorecardSelectedPlayers, setScorecardSelectedPlayers] = useState<string[]>([]);
+  const [coursesExpanded, setCoursesExpanded] = useState(false);
 
   // Load existing tournament data when component mounts
   useEffect(() => {
@@ -405,7 +406,14 @@ export default function TournamentDetail({ navigation, route, user, sessionToken
       {/* Courses Section */}
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>COURSES ({courses.length})</Text>
+          <TouchableOpacity
+            style={styles.sectionToggle}
+            onPress={() => setCoursesExpanded(v => !v)}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.sectionTitle}>COURSES ({courses.length})</Text>
+            <Text style={styles.toggleArrow}>{coursesExpanded ? '▲' : '▼'}</Text>
+          </TouchableOpacity>
           <TouchableOpacity
             style={styles.addButton}
             onPress={() => setShowAddCourseModal(true)}
@@ -414,7 +422,7 @@ export default function TournamentDetail({ navigation, route, user, sessionToken
           </TouchableOpacity>
         </View>
 
-        {isLoadingTournament ? (
+        {coursesExpanded && (isLoadingTournament ? (
           <View style={styles.emptyState}>
             <Text style={styles.loadingText}>Loading tournament data...</Text>
           </View>
@@ -590,168 +598,96 @@ export default function TournamentDetail({ navigation, route, user, sessionToken
               </View>
             );
           })
-        )}
+        ))}
       </View>
 
       {/* Player Leaderboard Section */}
       {(tournament || isExisting) && courses.length > 0 && (
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>LEADERBOARD</Text>
+          <TouchableOpacity
+            style={styles.leaderboardBanner}
+            onPress={() => navigation.navigate('FullLeaderboard', {
+              tournament,
+              courses,
+              tournamentId: tournament?.id || tournamentId,
+              tournamentName,
+            })}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.sectionTitle}>LEADERBOARD</Text>
+            <Text style={styles.leaderboardBannerLink}>Full Details →</Text>
+          </TouchableOpacity>
 
           <View style={styles.leaderboardCard}>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.leaderboardScrollContent}>
-              <View style={styles.leaderboard}>
-                {/* Header Row */}
-                <View style={[styles.leaderboardRow, styles.leaderboardHeaderRow]}>
-                  <View style={styles.playerNameHeader}>
-                    <Text style={styles.leaderboardHeaderText}>Player</Text>
-                  </View>
-                  {courses.map((course, index) => (
-                    <View key={course.id} style={styles.courseHeader}>
-                      <Text style={styles.leaderboardHeaderText} numberOfLines={2}>
-                        {course.name}
-                      </Text>
-                    </View>
-                  ))}
-                  <View style={styles.scoreHeader}>
-                    <Text style={styles.leaderboardHeaderText}>Birdies</Text>
-                  </View>
-                  <View style={styles.scoreHeader}>
-                    <Text style={styles.leaderboardHeaderText}>Points</Text>
-                  </View>
-                  <View style={styles.scoreHeader}>
-                    <Text style={styles.leaderboardHeaderText}>To Par</Text>
-                  </View>
-                </View>
+            {/* Header Row */}
+            <View style={[styles.simpleLeaderRow, styles.simpleLeaderHeaderRow]}>
+              <Text style={[styles.simpleLeaderHeaderText, { flex: 1 }]}>#</Text>
+              <Text style={[styles.simpleLeaderHeaderText, { flex: 3 }]}>Player</Text>
+              <Text style={[styles.simpleLeaderHeaderText, { flex: 2, textAlign: 'center' }]}>Top 3 Avg</Text>
+              <Text style={[styles.simpleLeaderHeaderText, { flex: 1, textAlign: 'center' }]}>Birdies</Text>
+            </View>
 
-                {/* Player Rows */}
-                {tournament?.players && tournament.players.length > 0 ? tournament.players.map((player: any) => {
-                  // Helper function to calculate Stableford points
-                  const calculateStablefordPoints = (score: number | undefined, holePar: number, holeHandicap: number, courseHandicapValue: number): number => {
-                    if (!score || courseHandicapValue === undefined) return 0;
+            {tournament?.players && tournament.players.length > 0 ? (() => {
+              const calculateStablefordPoints = (score: number, holePar: number, holeHandicap: number, courseHandicapValue: number): number => {
+                if (!score || courseHandicapValue === undefined) return 0;
+                const strokesReceived = Math.floor(courseHandicapValue / 18) + (holeHandicap <= (courseHandicapValue % 18) ? 1 : 0);
+                const adjustedPar = holePar + strokesReceived;
+                const difference = score - adjustedPar;
+                if (difference <= -4) return 6;
+                if (difference === -3) return 5;
+                if (difference === -2) return 4;
+                if (difference === -1) return 3;
+                if (difference === 0) return 2;
+                if (difference === 1) return 1;
+                return 0;
+              };
 
-                    const strokesReceived = Math.floor(courseHandicapValue / 18) + (holeHandicap <= (courseHandicapValue % 18) ? 1 : 0);
-                    const adjustedPar = holePar + strokesReceived;
-                    const difference = score - adjustedPar;
-
-                    if (difference <= -4) return 6;
-                    if (difference === -3) return 5;
-                    if (difference === -2) return 4;
-                    if (difference === -1) return 3;
-                    if (difference === 0) return 2;
-                    if (difference === 1) return 1;
-                    return 0;
-                  };
-
-                  const playerScores = courses.map(course => {
-                    const courseScores = tournament.scores?.[player.id]?.[course.id];
-                    if (!courseScores) return null;
-                    const totalScore = Object.values(courseScores).reduce((sum: number, score: any) => {
-                      return sum + (typeof score === 'number' ? score : 0);
-                    }, 0);
-                    return totalScore;
-                  });
-
-                  const totalBirdies = courses.reduce((birdieSum, course) => {
-                    const courseScores = tournament.scores?.[player.id]?.[course.id];
-                    if (!courseScores) return birdieSum;
-                    return birdieSum + course.holes.reduce((courseBirdies: number, hole: any, holeIndex: number) => {
-                      const holeScore = courseScores[hole.number || (holeIndex + 1)];
-                      const holePar = hole.par;
-                      if (typeof holeScore === 'number' && holeScore < holePar) {
-                        return courseBirdies + 1;
-                      }
-                      return courseBirdies;
-                    }, 0);
-                  }, 0);
-
-                  const totalStablefordPoints = courses.reduce((pointsSum, course) => {
-                    const courseScores = tournament.scores?.[player.id]?.[course.id];
-                    const playerHandicap = tournament.handicaps?.[player.id]?.[course.id] || 0;
-                    if (!courseScores) return pointsSum;
-                    return pointsSum + course.holes.reduce((coursePoints: number, hole: any, holeIndex: number) => {
-                      const holeScore = courseScores[hole.number || (holeIndex + 1)];
-                      if (typeof holeScore === 'number') {
-                        return coursePoints + calculateStablefordPoints(holeScore, hole.par, hole.handicap, playerHandicap);
-                      }
-                      return coursePoints;
-                    }, 0);
-                  }, 0);
-
-                  let totalScore = 0;
-                  let totalPar = 0;
-                  courses.forEach(course => {
-                    const courseScores = tournament.scores?.[player.id]?.[course.id];
-                    if (courseScores) {
-                      course.holes.forEach((hole: any, holeIndex: number) => {
-                        const holeScore = courseScores[hole.number || (holeIndex + 1)];
-                        if (typeof holeScore === 'number') {
-                          totalScore += holeScore;
-                          totalPar += hole.par;
-                        }
-                      });
+              const playerData = tournament.players.map((player: any) => {
+                const coursePoints = courses.map((course: Course) => {
+                  const courseScores = tournament.scores?.[player.id]?.[course.id];
+                  const playerHandicap = tournament.handicaps?.[player.id]?.[course.id] || 0;
+                  if (!courseScores) return null;
+                  return course.holes.reduce((pts: number, hole: any, holeIndex: number) => {
+                    const holeScore = courseScores[hole.number || (holeIndex + 1)];
+                    if (typeof holeScore === 'number') {
+                      return pts + calculateStablefordPoints(holeScore, hole.par, hole.handicap, playerHandicap);
                     }
-                  });
+                    return pts;
+                  }, 0);
+                }).filter((p: number | null) => p !== null) as number[];
 
-                  const scoreToPar = totalScore - totalPar;
-                  const scoreToParText = totalScore === 0 ? '-' :
-                                       scoreToPar === 0 ? 'E' :
-                                       scoreToPar > 0 ? `+${scoreToPar}` :
-                                       `${scoreToPar}`;
+                const top3 = [...coursePoints].sort((a: number, b: number) => b - a).slice(0, 3);
+                const top3Avg = top3.length > 0 ? top3.reduce((s: number, v: number) => s + v, 0) / top3.length : 0;
 
-                  return (
-                    <View key={player.id} style={styles.leaderboardRow}>
-                      <View style={styles.playerNameCell}>
-                        <Text style={styles.playerNameText}>{player.username}</Text>
-                      </View>
-                      {playerScores.map((score, index) => {
-                        const course = courses[index];
-                        const selectedTeeIndex = tournament?.courseSettings?.[course.id]?.selectedTeeIndex || 0;
+                const totalBirdies = courses.reduce((birdieSum: number, course: Course) => {
+                  const courseScores = tournament.scores?.[player.id]?.[course.id];
+                  if (!courseScores) return birdieSum;
+                  return birdieSum + course.holes.reduce((b: number, hole: any, holeIndex: number) => {
+                    const holeScore = courseScores[hole.number || (holeIndex + 1)];
+                    return (typeof holeScore === 'number' && holeScore < hole.par) ? b + 1 : b;
+                  }, 0);
+                }, 0);
 
-                        return (
-                          <TouchableOpacity
-                            key={index}
-                            style={styles.scoreCell}
-                            onPress={() => {
-                              if (score !== null) {
-                                navigation.navigate('CourseScorecard', {
-                                  course: course,
-                                  tournamentId: tournament?.id || tournamentId,
-                                  tournamentName: tournamentName,
-                                  selectedTeeIndex: selectedTeeIndex,
-                                  viewingPlayer: player
-                                });
-                              }
-                            }}
-                            activeOpacity={score !== null ? 0.7 : 1}
-                          >
-                            <Text style={[
-                              styles.scoreText,
-                              score !== null && styles.clickableScoreText
-                            ]}>
-                              {score !== null ? score : '-'}
-                            </Text>
-                          </TouchableOpacity>
-                        );
-                      })}
-                      <View style={styles.scoreCell}>
-                        <Text style={styles.birdieText}>{totalBirdies}</Text>
-                      </View>
-                      <View style={styles.scoreCell}>
-                        <Text style={styles.pointsText}>{totalStablefordPoints > 0 ? totalStablefordPoints : '-'}</Text>
-                      </View>
-                      <View style={styles.scoreCell}>
-                        <Text style={styles.toParText}>{scoreToParText}</Text>
-                      </View>
-                    </View>
-                  );
-                }) : (
-                  <View style={styles.emptyState}>
-                    <Text style={styles.emptyText}>No players have joined yet</Text>
-                  </View>
-                )}
+                return { player, top3Avg, totalBirdies };
+              });
+
+              playerData.sort((a: any, b: any) => b.top3Avg - a.top3Avg);
+
+              return playerData.map(({ player, top3Avg, totalBirdies }: any, index: number) => (
+                <View key={player.id} style={[styles.simpleLeaderRow, index % 2 === 1 && styles.simpleLeaderRowAlt]}>
+                  <Text style={[styles.simpleLeaderRank, { flex: 1 }]}>{index + 1}</Text>
+                  <Text style={[styles.simpleLeaderPlayer, { flex: 3 }]}>{player.username}</Text>
+                  <Text style={[styles.simpleLeaderPoints, { flex: 2, textAlign: 'center' }]}>
+                    {top3Avg > 0 ? top3Avg.toFixed(1) : '-'}
+                  </Text>
+                  <Text style={[styles.simpleLeaderBirdie, { flex: 1, textAlign: 'center' }]}>{totalBirdies}</Text>
+                </View>
+              ));
+            })() : (
+              <View style={styles.emptyState}>
+                <Text style={styles.emptyText}>No players have joined yet</Text>
               </View>
-            </ScrollView>
+            )}
           </View>
         </View>
       )}
@@ -1030,6 +966,72 @@ const styles = StyleSheet.create({
     color: '#1b5e20',
     letterSpacing: 1,
     marginBottom: 14,
+  },
+  sectionToggle: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  toggleArrow: {
+    fontSize: 11,
+    color: '#1b5e20',
+    marginLeft: 6,
+    marginBottom: 14,
+  },
+  leaderboardBanner: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  leaderboardBannerLink: {
+    fontSize: 13,
+    color: '#1565c0',
+    fontWeight: '600',
+    marginBottom: 14,
+  },
+  simpleLeaderHeaderRow: {
+    backgroundColor: '#1b5e20',
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderTopLeftRadius: 14,
+    borderTopRightRadius: 14,
+  },
+  simpleLeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  simpleLeaderRowAlt: {
+    backgroundColor: '#f9fdf9',
+  },
+  simpleLeaderHeaderText: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: 'rgba(255,255,255,0.9)',
+  },
+  simpleLeaderRank: {
+    fontSize: 14,
+    color: '#888',
+    fontWeight: '600',
+  },
+  simpleLeaderPlayer: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#1a2e1b',
+  },
+  simpleLeaderPoints: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#7b1fa2',
+  },
+  simpleLeaderBirdie: {
+    fontSize: 15,
+    fontWeight: 'bold',
+    color: '#e64a19',
   },
   addButton: {
     backgroundColor: '#1b5e20',
