@@ -49,6 +49,12 @@ export const API_ENDPOINTS = {
   saveHandicap: (tournamentId: string, courseId: string) =>
     `${API_BASE_URL}/api/tournaments/${tournamentId}/handicap/${courseId}`,
 
+  // Group Scorecards
+  createScorecard: (tournamentId: string) =>
+    `${API_BASE_URL}/api/tournaments/${tournamentId}/scorecards`,
+  deleteScorecard: (tournamentId: string, scorecardId: string) =>
+    `${API_BASE_URL}/api/tournaments/${tournamentId}/scorecards/${scorecardId}`,
+
   // Golf Course Data
   golfSearch: `${API_BASE_URL}/api/golf/search`,
   golfScrape: `${API_BASE_URL}/api/golf/scrape-url`,

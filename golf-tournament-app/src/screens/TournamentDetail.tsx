@@ -31,6 +31,9 @@ export default function TournamentDetail({ navigation, route, user, sessionToken
   const [isLoadingTournament, setIsLoadingTournament] = useState(false);
   const [editingCourse, setEditingCourse] = useState<Course | null>(null);
   const [editHoles, setEditHoles] = useState<any[]>([]);
+  const [showScorecardModal, setShowScorecardModal] = useState(false);
+  const [scorecardModalCourse, setScorecardModalCourse] = useState<Course | null>(null);
+  const [scorecardSelectedPlayers, setScorecardSelectedPlayers] = useState<string[]>([]);
 
   // Load existing tournament data when component mounts
   useEffect(() => {
@@ -331,6 +334,55 @@ export default function TournamentDetail({ navigation, route, user, sessionToken
     }
   };
 
+  const createScorecard = async () => {
+    if (!scorecardModalCourse || scorecardSelectedPlayers.length === 0) return;
+    const tid = tournament?.id || tournamentId;
+    try {
+      const response = await fetch(API_ENDPOINTS.createScorecard(tid), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${sessionToken}` },
+        body: JSON.stringify({ courseId: scorecardModalCourse.id, playerIds: scorecardSelectedPlayers })
+      });
+      const data = await response.json();
+      if (data.success) {
+        setTournament(data.tournament);
+        setShowScorecardModal(false);
+        setScorecardSelectedPlayers([]);
+        const selectedTeeIndex = tournament?.courseSettings?.[scorecardModalCourse.id]?.selectedTeeIndex || 0;
+        navigation.navigate('GroupScorecard', {
+          scorecard: data.scorecard,
+          course: scorecardModalCourse,
+          tournamentId: tid,
+          tournamentName,
+          selectedTeeIndex
+        });
+      } else {
+        Alert.alert('Error', data.error || 'Failed to create scorecard');
+      }
+    } catch (error) {
+      Alert.alert('Error', 'Failed to create scorecard');
+    }
+  };
+
+  const deleteScorecardGroup = async (scorecardId: string) => {
+    const tid = tournament?.id || tournamentId;
+    try {
+      const response = await fetch(API_ENDPOINTS.deleteScorecard(tid, scorecardId), {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${sessionToken}` }
+      });
+      const data = await response.json();
+      if (data.success) setTournament(data.tournament);
+    } catch (error) {
+      Alert.alert('Error', 'Failed to delete scorecard');
+    }
+  };
+
+  const toggleScorecardPlayer = (playerId: string) => {
+    setScorecardSelectedPlayers(prev =>
+      prev.includes(playerId) ? prev.filter(id => id !== playerId) : [...prev, playerId]
+    );
+  };
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
@@ -478,6 +530,61 @@ export default function TournamentDetail({ navigation, route, user, sessionToken
                       <Text style={styles.deleteCourseButtonText}>Delete</Text>
                     </TouchableOpacity>
                   </View>
+
+                  {/* Existing Scorecards for this course */}
+                  {(tournament?.scorecards || [])
+                    .filter((sc: any) => sc.courseId === course.id)
+                    .map((sc: any) => {
+                      const scTeeIndex = tournament?.courseSettings?.[course.id]?.selectedTeeIndex || 0;
+                      return (
+                        <View key={sc.id} style={styles.scorecardRow}>
+                          <TouchableOpacity
+                            style={styles.scorecardItem}
+                            onPress={() => navigation.navigate('GroupScorecard', {
+                              scorecard: sc,
+                              course,
+                              tournamentId: tournament?.id || tournamentId,
+                              tournamentName,
+                              selectedTeeIndex: scTeeIndex
+                            })}
+                            activeOpacity={0.7}
+                          >
+                            <Text style={styles.scorecardIcon}>📋</Text>
+                            <View style={styles.scorecardInfo}>
+                              <Text style={styles.scorecardPlayers} numberOfLines={1}>
+                                {Object.values(sc.playerNames).join(', ')}
+                              </Text>
+                              <Text style={styles.scorecardMeta}>
+                                {sc.playerIds.length} players · by {sc.createdByName}
+                              </Text>
+                            </View>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={styles.scorecardDeleteBtn}
+                            onPress={() => deleteScorecardGroup(sc.id)}
+                            activeOpacity={0.7}
+                          >
+                            <Text style={styles.scorecardDeleteText}>✕</Text>
+                          </TouchableOpacity>
+                        </View>
+                      );
+                    })
+                  }
+
+                  {/* Create Scorecard Button */}
+                  {tournament && (
+                    <TouchableOpacity
+                      style={styles.createScorecardButton}
+                      onPress={() => {
+                        setScorecardModalCourse(course);
+                        setScorecardSelectedPlayers(user?.id ? [user.id] : []);
+                        setShowScorecardModal(true);
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.createScorecardText}>+ Create Scorecard</Text>
+                    </TouchableOpacity>
+                  )}
 
                 </View>
               </View>
@@ -746,6 +853,63 @@ export default function TournamentDetail({ navigation, route, user, sessionToken
                 onPress={saveEditedCourse}
               >
                 <Text style={styles.modalAddText}>Save Changes</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Create Scorecard Modal */}
+      <Modal
+        visible={showScorecardModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowScorecardModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Create Scorecard</Text>
+            <Text style={styles.modalSubtitle}>
+              {scorecardModalCourse?.name}{'\n'}Select players in your group
+            </Text>
+
+            <ScrollView style={{ maxHeight: 280, marginBottom: 16 }}>
+              {(tournament?.players || []).map((player: any) => {
+                const isSelected = scorecardSelectedPlayers.includes(player.id);
+                const isCurrentUser = player.id === user?.id;
+                return (
+                  <TouchableOpacity
+                    key={player.id}
+                    style={[styles.playerSelectRow, isSelected && styles.playerSelectRowSelected]}
+                    onPress={() => !isCurrentUser && toggleScorecardPlayer(player.id)}
+                    activeOpacity={isCurrentUser ? 1 : 0.7}
+                  >
+                    <View style={[styles.playerSelectCheck, isSelected && styles.playerSelectCheckSelected]}>
+                      {isSelected && <Text style={styles.playerSelectCheckMark}>✓</Text>}
+                    </View>
+                    <Text style={[styles.playerSelectName, isSelected && styles.playerSelectNameSelected]}>
+                      {player.username}{isCurrentUser ? ' (you)' : ''}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={styles.modalCancelButton}
+                onPress={() => { setShowScorecardModal(false); setScorecardSelectedPlayers([]); }}
+              >
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalAddButton, scorecardSelectedPlayers.length === 0 && styles.disabledButton]}
+                onPress={createScorecard}
+                disabled={scorecardSelectedPlayers.length === 0}
+              >
+                <Text style={styles.modalAddText}>
+                  Start ({scorecardSelectedPlayers.length})
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1335,5 +1499,103 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginHorizontal: 2,
     backgroundColor: '#fafafa',
+  },
+
+  // Group Scorecards
+  createScorecardButton: {
+    marginTop: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 8,
+    borderWidth: 1.5,
+    borderColor: '#1b5e20',
+    borderStyle: 'dashed',
+    alignItems: 'center',
+  },
+  createScorecardText: {
+    color: '#1b5e20',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  scorecardRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    backgroundColor: '#f0f7f0',
+    borderRadius: 8,
+    overflow: 'hidden',
+  },
+  scorecardItem: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 8,
+  },
+  scorecardIcon: {
+    fontSize: 18,
+  },
+  scorecardInfo: {
+    flex: 1,
+  },
+  scorecardPlayers: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#1a2e1b',
+  },
+  scorecardMeta: {
+    fontSize: 11,
+    color: '#666',
+    marginTop: 1,
+  },
+  scorecardDeleteBtn: {
+    padding: 12,
+    backgroundColor: 'transparent',
+  },
+  scorecardDeleteText: {
+    fontSize: 14,
+    color: '#c62828',
+    fontWeight: 'bold',
+  },
+
+  // Player selection in scorecard modal
+  playerSelectRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+    gap: 12,
+  },
+  playerSelectRowSelected: {
+    backgroundColor: '#f0f7f0',
+  },
+  playerSelectCheck: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#ccc',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  playerSelectCheckSelected: {
+    backgroundColor: '#1b5e20',
+    borderColor: '#1b5e20',
+  },
+  playerSelectCheckMark: {
+    color: 'white',
+    fontSize: 13,
+    fontWeight: 'bold',
+  },
+  playerSelectName: {
+    fontSize: 15,
+    color: '#333',
+  },
+  playerSelectNameSelected: {
+    color: '#1b5e20',
+    fontWeight: '600',
   },
 });

@@ -58,7 +58,8 @@ router.post('/', authRouter.authenticateUser, (req, res) => {
       }],
       scores: {},
       handicaps: {}, // Store course handicaps per player per course
-      courseSettings: {} // Store tee selections per course
+      courseSettings: {}, // Store tee selections per course
+      scorecards: [] // Group scorecards for on-course scoring
     };
 
     tournaments.push(newTournament);
@@ -539,18 +540,16 @@ router.put('/:id/courses/:courseId/tee', authRouter.authenticateUser, (req, res)
   }
 });
 
-// Save course handicap for a player (any tournament participant)
+// Save course handicap for a player (any tournament participant, optionally for another player)
 router.put('/:id/handicap/:courseId', authRouter.authenticateUser, (req, res) => {
   try {
     const { id, courseId } = req.params;
-    const { courseHandicap } = req.body;
+    const { courseHandicap, targetPlayerId } = req.body;
     const user = req.user;
 
     const tournamentIndex = tournaments.findIndex(t => t.id === id);
     if (tournamentIndex === -1) {
-      return res.status(404).json({
-        error: 'Tournament not found'
-      });
+      return res.status(404).json({ error: 'Tournament not found' });
     }
 
     const tournament = tournaments[tournamentIndex];
@@ -558,31 +557,33 @@ router.put('/:id/handicap/:courseId', authRouter.authenticateUser, (req, res) =>
     // Check if user is part of this tournament
     const isPlayer = tournament.players.some(p => p.id === user.id);
     if (!isPlayer) {
-      return res.status(403).json({
-        error: 'You are not part of this tournament'
-      });
+      return res.status(403).json({ error: 'You are not part of this tournament' });
+    }
+
+    // Determine which player's handicap to save
+    let playerId = user.id;
+    if (targetPlayerId && targetPlayerId !== user.id) {
+      const targetPlayer = tournament.players.find(p => p.id === targetPlayerId);
+      if (!targetPlayer) {
+        return res.status(400).json({ error: 'Target player not in tournament' });
+      }
+      playerId = targetPlayerId;
     }
 
     // Validate handicap
     if (typeof courseHandicap !== 'number' || courseHandicap < 0 || courseHandicap > 54) {
-      return res.status(400).json({
-        error: 'Invalid course handicap value'
-      });
+      return res.status(400).json({ error: 'Invalid course handicap value' });
     }
 
     // Initialize handicaps structure if it doesn't exist
-    if (!tournaments[tournamentIndex].handicaps) {
-      tournaments[tournamentIndex].handicaps = {};
-    }
-    if (!tournaments[tournamentIndex].handicaps[user.id]) {
-      tournaments[tournamentIndex].handicaps[user.id] = {};
-    }
+    if (!tournaments[tournamentIndex].handicaps) tournaments[tournamentIndex].handicaps = {};
+    if (!tournaments[tournamentIndex].handicaps[playerId]) tournaments[tournamentIndex].handicaps[playerId] = {};
 
     // Save the course handicap
-    tournaments[tournamentIndex].handicaps[user.id][courseId] = courseHandicap;
+    tournaments[tournamentIndex].handicaps[playerId][courseId] = courseHandicap;
     saveTournaments();
 
-    console.log(`✅ Course handicap saved: ${user.username} set handicap ${courseHandicap} for course ${courseId} in tournament ${id}`);
+    console.log(`✅ Course handicap saved: handicap ${courseHandicap} for player ${playerId} in tournament ${id}`);
 
     res.json({
       success: true,
@@ -592,25 +593,108 @@ router.put('/:id/handicap/:courseId', authRouter.authenticateUser, (req, res) =>
 
   } catch (error) {
     console.error('❌ Save course handicap error:', error);
-    res.status(500).json({
-      error: 'Failed to save course handicap',
-      message: error.message
-    });
+    res.status(500).json({ error: 'Failed to save course handicap', message: error.message });
   }
 });
 
-// Save score for a hole (any tournament participant)
+// Create a group scorecard for a course
+router.post('/:id/scorecards', authRouter.authenticateUser, (req, res) => {
+  try {
+    const { id } = req.params;
+    const { courseId, playerIds } = req.body;
+    const user = req.user;
+
+    const tournamentIndex = tournaments.findIndex(t => t.id === id);
+    if (tournamentIndex === -1) return res.status(404).json({ error: 'Tournament not found' });
+
+    const tournament = tournaments[tournamentIndex];
+    const isPlayer = tournament.players.some(p => p.id === user.id);
+    if (!isPlayer) return res.status(403).json({ error: 'You are not part of this tournament' });
+
+    const course = tournament.courses.find(c => c.id === courseId);
+    if (!course) return res.status(404).json({ error: 'Course not found in tournament' });
+
+    if (!Array.isArray(playerIds) || playerIds.length === 0) {
+      return res.status(400).json({ error: 'At least one player is required' });
+    }
+
+    const validPlayers = playerIds
+      .map(pid => tournament.players.find(p => p.id === pid))
+      .filter(Boolean);
+
+    if (validPlayers.length === 0) {
+      return res.status(400).json({ error: 'No valid tournament players specified' });
+    }
+
+    const scorecardId = 'sc_' + Math.random().toString(36).substr(2, 8);
+    const newScorecard = {
+      id: scorecardId,
+      courseId,
+      courseName: course.name,
+      createdBy: user.id,
+      createdByName: user.username,
+      playerIds: validPlayers.map(p => p.id),
+      playerNames: Object.fromEntries(validPlayers.map(p => [p.id, p.username])),
+      createdAt: new Date().toISOString()
+    };
+
+    if (!tournaments[tournamentIndex].scorecards) tournaments[tournamentIndex].scorecards = [];
+    tournaments[tournamentIndex].scorecards.push(newScorecard);
+    saveTournaments();
+
+    console.log(`✅ Scorecard created for course "${course.name}" in tournament ${id} by ${user.username}`);
+
+    res.json({ success: true, scorecard: newScorecard, tournament: tournaments[tournamentIndex] });
+
+  } catch (error) {
+    console.error('❌ Create scorecard error:', error);
+    res.status(500).json({ error: 'Failed to create scorecard', message: error.message });
+  }
+});
+
+// Delete a group scorecard
+router.delete('/:id/scorecards/:scorecardId', authRouter.authenticateUser, (req, res) => {
+  try {
+    const { id, scorecardId } = req.params;
+    const user = req.user;
+
+    const tournamentIndex = tournaments.findIndex(t => t.id === id);
+    if (tournamentIndex === -1) return res.status(404).json({ error: 'Tournament not found' });
+
+    const tournament = tournaments[tournamentIndex];
+    const isPlayer = tournament.players.some(p => p.id === user.id);
+    if (!isPlayer) return res.status(403).json({ error: 'You are not part of this tournament' });
+
+    const scorecards = tournament.scorecards || [];
+    const scorecardIndex = scorecards.findIndex(s => s.id === scorecardId);
+    if (scorecardIndex === -1) return res.status(404).json({ error: 'Scorecard not found' });
+
+    const scorecard = scorecards[scorecardIndex];
+    if (scorecard.createdBy !== user.id && tournament.createdBy !== user.id) {
+      return res.status(403).json({ error: 'Only the scorecard creator can delete it' });
+    }
+
+    tournaments[tournamentIndex].scorecards.splice(scorecardIndex, 1);
+    saveTournaments();
+
+    res.json({ success: true, message: 'Scorecard deleted', tournament: tournaments[tournamentIndex] });
+
+  } catch (error) {
+    console.error('❌ Delete scorecard error:', error);
+    res.status(500).json({ error: 'Failed to delete scorecard', message: error.message });
+  }
+});
+
+// Save score for a hole (any tournament participant, optionally for another player)
 router.put('/:id/scores/:courseId/:holeNumber', authRouter.authenticateUser, (req, res) => {
   try {
     const { id, courseId, holeNumber } = req.params;
-    const { score } = req.body;
+    const { score, targetPlayerId } = req.body;
     const user = req.user;
 
     const tournamentIndex = tournaments.findIndex(t => t.id === id);
     if (tournamentIndex === -1) {
-      return res.status(404).json({
-        error: 'Tournament not found'
-      });
+      return res.status(404).json({ error: 'Tournament not found' });
     }
 
     const tournament = tournaments[tournamentIndex];
@@ -618,34 +702,36 @@ router.put('/:id/scores/:courseId/:holeNumber', authRouter.authenticateUser, (re
     // Check if user is part of this tournament
     const isPlayer = tournament.players.some(p => p.id === user.id);
     if (!isPlayer) {
-      return res.status(403).json({
-        error: 'You are not part of this tournament'
-      });
+      return res.status(403).json({ error: 'You are not part of this tournament' });
+    }
+
+    // Determine which player's score to save
+    let playerId = user.id;
+    let playerName = user.username;
+    if (targetPlayerId && targetPlayerId !== user.id) {
+      const targetPlayer = tournament.players.find(p => p.id === targetPlayerId);
+      if (!targetPlayer) {
+        return res.status(400).json({ error: 'Target player not in tournament' });
+      }
+      playerId = targetPlayerId;
+      playerName = targetPlayer.username;
     }
 
     // Validate score
     if (typeof score !== 'number' || score < 1 || score > 20) {
-      return res.status(400).json({
-        error: 'Invalid score value'
-      });
+      return res.status(400).json({ error: 'Invalid score value' });
     }
 
     // Initialize scores structure if it doesn't exist
-    if (!tournaments[tournamentIndex].scores) {
-      tournaments[tournamentIndex].scores = {};
-    }
-    if (!tournaments[tournamentIndex].scores[user.id]) {
-      tournaments[tournamentIndex].scores[user.id] = {};
-    }
-    if (!tournaments[tournamentIndex].scores[user.id][courseId]) {
-      tournaments[tournamentIndex].scores[user.id][courseId] = {};
-    }
+    if (!tournaments[tournamentIndex].scores) tournaments[tournamentIndex].scores = {};
+    if (!tournaments[tournamentIndex].scores[playerId]) tournaments[tournamentIndex].scores[playerId] = {};
+    if (!tournaments[tournamentIndex].scores[playerId][courseId]) tournaments[tournamentIndex].scores[playerId][courseId] = {};
 
     // Save the score
-    tournaments[tournamentIndex].scores[user.id][courseId][holeNumber] = score;
+    tournaments[tournamentIndex].scores[playerId][courseId][holeNumber] = score;
     saveTournaments();
 
-    console.log(`✅ Score saved: ${user.username} scored ${score} on hole ${holeNumber} of course ${courseId} in tournament ${id}`);
+    console.log(`✅ Score saved: ${playerName} scored ${score} on hole ${holeNumber} of course ${courseId} in tournament ${id}`);
 
     res.json({
       success: true,
@@ -655,10 +741,7 @@ router.put('/:id/scores/:courseId/:holeNumber', authRouter.authenticateUser, (re
 
   } catch (error) {
     console.error('❌ Save score error:', error);
-    res.status(500).json({
-      error: 'Failed to save score',
-      message: error.message
-    });
+    res.status(500).json({ error: 'Failed to save score', message: error.message });
   }
 });
 

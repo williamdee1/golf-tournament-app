@@ -7,11 +7,14 @@ import CreateTournament from './src/screens/CreateTournament';
 import TournamentDetail from './src/screens/TournamentDetail';
 import LoginScreen from './src/screens/LoginScreen';
 import CourseScorecard from './src/screens/CourseScorecard';
+import GroupScorecard from './src/screens/GroupScorecard';
 
 const SCREEN_LABELS: Record<string, string> = {
   home: 'Home',
   TournamentDetail: 'Tournament',
   CreateTournament: 'Create Tournament',
+  CourseScorecard: 'Tournament',
+  GroupScorecard: 'Tournament',
 };
 
 export default function App() {
@@ -67,6 +70,8 @@ export default function App() {
         return <TournamentDetail navigation={navigation} route={{ params: screenParams }} user={user} sessionToken={sessionToken} />;
       case 'CourseScorecard':
         return <CourseScorecard navigation={navigation} route={{ params: screenParams }} user={user} sessionToken={sessionToken} />;
+      case 'GroupScorecard':
+        return <GroupScorecard navigation={navigation} route={{ params: screenParams }} user={user} sessionToken={sessionToken} />;
       case 'login':
         return <LoginScreen navigation={navigation} onLogin={handleLogin} />;
       default:
