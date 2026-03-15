@@ -522,22 +522,24 @@ export default function TournamentDetail({ navigation, route, user, sessionToken
                   )}
 
                   {/* Edit / Delete Course Buttons */}
-                  <View style={styles.courseButtonRow}>
-                    <TouchableOpacity
-                      style={styles.editCourseButton}
-                      onPress={() => openEditModal(course)}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={styles.editCourseButtonText}>Edit</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={styles.deleteCourseButton}
-                      onPress={() => removeCourse(course.id)}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={styles.deleteCourseButtonText}>Delete</Text>
-                    </TouchableOpacity>
-                  </View>
+                  {isCreator && (
+                    <View style={styles.courseButtonRow}>
+                      <TouchableOpacity
+                        style={styles.editCourseButton}
+                        onPress={() => openEditModal(course)}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={styles.editCourseButtonText}>Edit</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.deleteCourseButton}
+                        onPress={() => removeCourse(course.id)}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={styles.deleteCourseButtonText}>Delete</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
 
                   {/* Existing Scorecards for this course */}
                   {(tournament?.scorecards || [])
