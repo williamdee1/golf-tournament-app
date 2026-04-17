@@ -296,25 +296,24 @@ export default function CourseScorecard({ navigation, route, user, sessionToken 
   return (
     <ScrollView style={styles.container}>
       <View style={styles.header}>
+        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+          <Text style={styles.backButtonText}>← Back</Text>
+        </TouchableOpacity>
         <View style={styles.headerTop}>
           <View style={styles.headerLeft}>
             <Text style={styles.title}>{course.name}</Text>
-            <Text style={styles.tournamentInfo}>
-              Tournament: {tournamentName}
-            </Text>
+            <Text style={styles.tournamentInfo}>{tournamentName}</Text>
             {!isViewingOwnScorecard && (
               <Text style={styles.playerInfo}>
                 Viewing: {currentPlayer.username}'s scorecard
               </Text>
             )}
             {tee && (
-              <Text style={styles.teeInfo}>
-                Playing from: {tee.name}
-              </Text>
+              <Text style={styles.teeInfo}>Playing from: {tee.name}</Text>
             )}
           </View>
           <View style={styles.headerRight}>
-            <Text style={styles.handicapLabel}>Course Handicap</Text>
+            <Text style={styles.handicapLabel}>Course HCP</Text>
             {isViewingOwnScorecard ? (
               <TextInput
                 style={styles.handicapInput}
@@ -323,7 +322,7 @@ export default function CourseScorecard({ navigation, route, user, sessionToken 
                 keyboardType="numeric"
                 maxLength={2}
                 placeholder="0"
-                placeholderTextColor="#ccc"
+                placeholderTextColor="rgba(255,255,255,0.5)"
                 returnKeyType="done"
                 selectTextOnFocus={true}
                 autoCorrect={false}
@@ -331,9 +330,7 @@ export default function CourseScorecard({ navigation, route, user, sessionToken 
               />
             ) : (
               <View style={[styles.handicapInput, styles.readOnlyHandicap]}>
-                <Text style={styles.handicapText}>
-                  {courseHandicap || '0'}
-                </Text>
+                <Text style={styles.handicapText}>{courseHandicap || '0'}</Text>
               </View>
             )}
           </View>
@@ -398,15 +395,6 @@ export default function CourseScorecard({ navigation, route, user, sessionToken 
         </View>
       )}
 
-      {/* Action Button */}
-      <View style={styles.actions}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-        >
-          <Text style={styles.backButtonText}>Back to Tournament</Text>
-        </TouchableOpacity>
-      </View>
     </ScrollView>
   );
 }
@@ -414,14 +402,23 @@ export default function CourseScorecard({ navigation, route, user, sessionToken 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: '#f2f5f2',
   },
+
+  // Header
   header: {
-    padding: 20,
-    paddingTop: 60,
-    backgroundColor: '#f8f9fa',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e9ecef',
+    backgroundColor: '#1b5e20',
+    paddingHorizontal: 20,
+    paddingTop: 52,
+    paddingBottom: 20,
+  },
+  backButton: {
+    marginBottom: 14,
+  },
+  backButtonText: {
+    color: 'rgba(255,255,255,0.75)',
+    fontSize: 14,
+    fontWeight: '500',
   },
   headerTop: {
     flexDirection: 'row',
@@ -430,134 +427,135 @@ const styles = StyleSheet.create({
   },
   headerLeft: {
     flex: 1,
+    marginRight: 16,
   },
   headerRight: {
     alignItems: 'center',
-    marginLeft: 20,
   },
   title: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: 'bold',
-    color: '#2e7d32',
-    marginBottom: 5,
+    color: '#ffffff',
+    marginBottom: 4,
   },
   tournamentInfo: {
-    fontSize: 14,
-    color: '#888',
-    marginBottom: 5,
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.7)',
+    marginBottom: 3,
   },
   teeInfo: {
-    fontSize: 14,
-    color: '#2e7d32',
-    fontWeight: 'bold',
+    fontSize: 13,
+    color: '#a5d6a7',
+    fontWeight: '600',
+  },
+  playerInfo: {
+    fontSize: 13,
+    color: '#a5d6a7',
+    fontWeight: '600',
+    marginBottom: 3,
   },
   handicapLabel: {
-    fontSize: 14,
-    color: '#333',
-    fontWeight: 'bold',
-    marginBottom: 5,
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.7)',
+    fontWeight: '700',
+    marginBottom: 6,
     textAlign: 'center',
+    letterSpacing: 0.5,
   },
   handicapInput: {
     borderWidth: 2,
-    borderColor: '#2e7d32',
-    borderRadius: 8,
-    width: 60,
-    height: 50,
+    borderColor: 'rgba(255,255,255,0.4)',
+    borderRadius: 10,
+    width: 64,
+    height: 52,
     textAlign: 'center',
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: 'bold',
-    backgroundColor: '#fff',
-    color: '#2e7d32',
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    color: '#ffffff',
   },
   readOnlyScore: {
-    backgroundColor: '#f5f5f5',
-    borderColor: '#ccc',
     justifyContent: 'center',
     alignItems: 'center',
   },
   readOnlyHandicap: {
-    backgroundColor: '#f5f5f5',
-    borderColor: '#ccc',
+    backgroundColor: 'rgba(255,255,255,0.1)',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  playerInfo: {
-    fontSize: 14,
-    color: '#1976d2',
-    fontWeight: 'bold',
-    marginBottom: 5,
-  },
   handicapText: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: 'bold',
-    color: '#666',
+    color: '#ffffff',
   },
   scoreText: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#666',
+    color: '#333',
   },
+
+  // Summary bar
   summarySection: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    padding: 20,
-    backgroundColor: '#f8f9fa',
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    backgroundColor: '#ffffff',
     borderBottomWidth: 1,
-    borderBottomColor: '#e9ecef',
+    borderBottomColor: '#e8ece8',
   },
   summaryItem: {
     alignItems: 'center',
   },
   summaryLabel: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 5,
+    fontSize: 12,
+    color: '#888',
+    marginBottom: 4,
+    fontWeight: '500',
   },
   summaryValue: {
     fontSize: 20,
     fontWeight: 'bold',
     color: '#2e7d32',
   },
+
+  // Scorecard
   nineSection: {
-    padding: 20,
-    paddingTop: 15,
+    padding: 16,
+    paddingTop: 20,
   },
   nineTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#2e7d32',
-    marginBottom: 15,
-    textAlign: 'center',
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#1b5e20',
+    marginBottom: 12,
+    letterSpacing: 0.5,
   },
   holesContainer: {
     flexDirection: 'row',
-    backgroundColor: '#f8f9fa',
-    borderRadius: 8,
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
     padding: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    elevation: 2,
   },
   holeCard: {
-    backgroundColor: 'white',
+    backgroundColor: '#fafafa',
     borderRadius: 8,
     padding: 10,
     marginRight: 8,
-    minWidth: 80,
+    minWidth: 68,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#e9ecef',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
+    borderColor: '#eeeeee',
   },
   holeNumberText: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: 'bold',
-    color: '#2e7d32',
+    color: '#1b5e20',
     marginBottom: 2,
   },
   parText: {
@@ -578,17 +576,18 @@ const styles = StyleSheet.create({
   },
   holeLabel: {
     fontSize: 10,
-    color: '#999',
-    marginBottom: 8,
+    color: '#aaa',
+    marginBottom: 6,
     textTransform: 'uppercase',
-    fontWeight: 'bold',
+    fontWeight: '600',
+    letterSpacing: 0.3,
   },
   scoreInput: {
     borderWidth: 2,
-    borderColor: '#ddd',
-    borderRadius: 6,
-    width: 40,
-    height: 40,
+    borderColor: '#e0e0e0',
+    borderRadius: 8,
+    width: 48,
+    height: 48,
     textAlign: 'center',
     fontSize: 16,
     fontWeight: 'bold',
@@ -599,31 +598,15 @@ const styles = StyleSheet.create({
   },
   scoreInputFilled: {
     borderColor: '#2e7d32',
-    backgroundColor: '#e8f5e8',
-    color: '#2e7d32',
   },
   stablefordText: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: 'bold',
-    color: '#666',
+    color: '#aaa',
     textAlign: 'center',
     marginBottom: 2,
   },
   stablefordTextFilled: {
-    color: '#ff6b35',
-  },
-  actions: {
-    padding: 20,
-  },
-  backButton: {
-    backgroundColor: '#4caf50',
-    padding: 15,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  backButtonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: 'bold',
+    color: '#e64a19',
   },
 });

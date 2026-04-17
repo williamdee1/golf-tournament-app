@@ -1,33 +1,139 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, Alert } from 'react-native';
+import React, { useState, useRef, useEffect } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  TextInput,
+  Alert,
+  ScrollView,
+  KeyboardAvoidingView,
+  Platform,
+  Animated,
+} from 'react-native';
 import { NavigationProp } from '@react-navigation/native';
 import { API_ENDPOINTS } from '../config/api';
-
-const isDevelopment =
-  process.env.NODE_ENV === 'development' ||
-  __DEV__ ||
-  (typeof window !== 'undefined' && window.location.hostname === 'localhost');
 
 type Props = {
   navigation: NavigationProp<any>;
   onLogin: (user: any, token: string) => void;
 };
 
+// ─── Clean input with animated bottom border ──────────────────────────────────
+type InputProps = {
+  placeholder: string;
+  value: string;
+  onChangeText: (t: string) => void;
+  secureTextEntry?: boolean;
+  keyboardType?: any;
+};
+
+function MinimalInput({ placeholder, value, onChangeText, secureTextEntry, keyboardType }: InputProps) {
+  const [focused, setFocused] = useState(false);
+  const borderAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(borderAnim, {
+      toValue: focused ? 1 : 0,
+      duration: 200,
+      useNativeDriver: false,
+    }).start();
+  }, [focused]);
+
+  const borderColor = borderAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['rgba(255,255,255,0.2)', '#2d9e5f'],
+  });
+
+  return (
+    <View style={inputStyles.wrapper}>
+      <Text style={inputStyles.label}>{placeholder}</Text>
+      <Animated.View style={[inputStyles.inputBox, { borderColor }]}>
+        <TextInput
+          style={[
+            inputStyles.input,
+            Platform.OS === 'web' ? ({
+              outlineStyle: 'none',
+              WebkitBoxShadow: '0 0 0 30px transparent inset',
+              WebkitTextFillColor: '#ffffff',
+            } as any) : {},
+          ]}
+          value={value}
+          onChangeText={onChangeText}
+          secureTextEntry={secureTextEntry}
+          keyboardType={keyboardType}
+          autoCapitalize="none"
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          placeholderTextColor="rgba(255,255,255,0.35)"
+          selectionColor="#2d9e5f"
+        />
+      </Animated.View>
+    </View>
+  );
+}
+
+const inputStyles = StyleSheet.create({
+  wrapper: {
+    marginBottom: 20,
+    position: 'relative',
+  },
+  label: {
+    fontSize: 10,
+    fontWeight: '600',
+    letterSpacing: 1.5,
+    color: 'rgba(255,255,255,0.4)',
+    marginBottom: 8,
+    textTransform: 'uppercase' as any,
+  },
+  inputBox: {
+    borderWidth: 1,
+    borderRadius: 8,
+    backgroundColor: '#ffffff1c',
+    paddingHorizontal: 14,
+    paddingVertical: 2,
+  },
+  input: {
+    fontSize: 15,
+    fontWeight: '300',
+    color: '#ffffff',
+    backgroundColor: 'transparent',
+    paddingVertical: 12,
+  },
+});
+
+// ─── Main Screen ──────────────────────────────────────────────────────────────
 export default function LoginScreen({ navigation, onLogin }: Props) {
   const [isLogin, setIsLogin] = useState(true);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [handicapIndex, setHandicapIndex] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [btnHovered, setBtnHovered] = useState(false);
+
+  // Staggered entry
+  const titleAnim   = useRef(new Animated.Value(0)).current;
+  const taglineAnim = useRef(new Animated.Value(0)).current;
+  const cardAnim    = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.stagger(120, [
+      Animated.timing(titleAnim,   { toValue: 1, duration: 500, useNativeDriver: true }),
+      Animated.timing(taglineAnim, { toValue: 1, duration: 400, useNativeDriver: true }),
+      Animated.timing(cardAnim,    { toValue: 1, duration: 400, useNativeDriver: true }),
+    ]).start();
+  }, []);
+
+  const titleStyle   = { opacity: titleAnim,   transform: [{ translateY: titleAnim.interpolate({ inputRange: [0, 1], outputRange: [20, 0] }) }] };
+  const taglineStyle = { opacity: taglineAnim, transform: [{ translateY: taglineAnim.interpolate({ inputRange: [0, 1], outputRange: [14, 0] }) }] };
+  const cardStyle    = { opacity: cardAnim,    transform: [{ translateY: cardAnim.interpolate({ inputRange: [0, 1], outputRange: [24, 0] }) }] };
 
   const handleSubmit = async () => {
     if (!username.trim() || !password.trim()) {
       Alert.alert('Error', 'Username and password are required');
       return;
     }
-
     setIsLoading(true);
-
     try {
       const endpoint = isLogin ? API_ENDPOINTS.login : API_ENDPOINTS.register;
       const body = isLogin
@@ -39,16 +145,13 @@ export default function LoginScreen({ navigation, onLogin }: Props) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
-
       const data = await response.json();
-
       if (data.success) {
         onLogin(data.user, data.sessionToken);
       } else {
         Alert.alert('Error', data.error || 'Authentication failed');
       }
     } catch (error) {
-      console.error('Auth error:', error);
       Alert.alert('Error', `Failed to connect to server: ${error.message}`);
     } finally {
       setIsLoading(false);
@@ -62,155 +165,170 @@ export default function LoginScreen({ navigation, onLogin }: Props) {
     setHandicapIndex('');
   };
 
+  const canSubmit = !!(username.trim() && password.trim() && !isLoading);
+
+  // Button glow on hover
+  const buttonStyle: any[] = [
+    styles.button,
+    !canSubmit && styles.buttonDisabled,
+    Platform.OS === 'web' && btnHovered && canSubmit && {
+      backgroundColor: '#34c26a',
+      boxShadow: '0 0 20px rgba(45,158,95,0.5)',
+    },
+  ];
+
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Golf Tournament App</Text>
-      <Text style={styles.subtitle}>
-        {isLogin ? 'Sign in to your account' : 'Create a new account'}
-      </Text>
-
-      <View style={styles.form}>
-        <TextInput
-          style={styles.input}
-          placeholder="Username"
-          value={username}
-          onChangeText={setUsername}
-          autoCapitalize="none"
-        />
-
-        <TextInput
-          style={styles.input}
-          placeholder="Password"
-          value={password}
-          onChangeText={setPassword}
-          secureTextEntry
-        />
-
-        {!isLogin && (
-          <TextInput
-            style={styles.input}
-            placeholder="Handicap Index (optional)"
-            value={handicapIndex}
-            onChangeText={setHandicapIndex}
-            keyboardType="numeric"
-          />
-        )}
-
-        <TouchableOpacity
-          style={[styles.button, (!username.trim() || !password.trim() || isLoading) && styles.disabledButton]}
-          onPress={handleSubmit}
-          disabled={!username.trim() || !password.trim() || isLoading}
-        >
-          <Text style={styles.buttonText}>
-            {isLoading ? 'Please wait...' : (isLogin ? 'Sign In' : 'Create Account')}
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.toggleButton} onPress={toggleMode}>
-          <Text style={styles.toggleButtonText}>
-            {isLogin ? "Don't have an account? Sign up" : "Already have an account? Sign in"}
-          </Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Demo users for testing (development only) */}
-      {isDevelopment && (
-        <View style={styles.demoSection}>
-          <Text style={styles.demoTitle}>Demo Accounts:</Text>
-          <TouchableOpacity
-            style={styles.demoButton}
-            onPress={() => { setUsername('TestPlayer1'); setPassword('password123'); }}
-          >
-            <Text style={styles.demoButtonText}>Login as TestPlayer1</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.demoButton}
-            onPress={() => { setUsername('TestPlayer2'); setPassword('password123'); }}
-          >
-            <Text style={styles.demoButtonText}>Login as TestPlayer2</Text>
-          </TouchableOpacity>
+    <KeyboardAvoidingView style={styles.root} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Hero */}
+        <View style={styles.hero}>
+          <Animated.Text style={[styles.heroTitle, titleStyle]}>
+            Caddie
+          </Animated.Text>
+          <Animated.Text style={[styles.tagline, taglineStyle]}>
+            ELEVATE YOUR SCORECARD
+          </Animated.Text>
         </View>
-      )}
-    </View>
+
+        {/* Login card */}
+        <Animated.View
+          style={[
+            styles.card,
+            cardStyle,
+            Platform.OS === 'web' ? {
+              backdropFilter: 'blur(10px)' as any,
+              WebkitBackdropFilter: 'blur(10px)' as any,
+            } : {},
+          ]}
+        >
+          <MinimalInput
+            placeholder="Username"
+            value={username}
+            onChangeText={setUsername}
+          />
+
+          <MinimalInput
+            placeholder="Password"
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry
+          />
+
+          {!isLogin && (
+            <MinimalInput
+              placeholder="Handicap Index (optional)"
+              value={handicapIndex}
+              onChangeText={setHandicapIndex}
+              keyboardType="numeric"
+            />
+          )}
+
+          <TouchableOpacity
+            style={buttonStyle}
+            onPress={handleSubmit}
+            disabled={!canSubmit}
+            activeOpacity={0.85}
+            onMouseEnter={() => setBtnHovered(true)}
+            onMouseLeave={() => setBtnHovered(false)}
+          >
+            <Text style={styles.buttonText}>
+              {isLoading ? 'Elevating your game...' : (isLogin ? 'Sign In' : 'Create Account')}
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.toggleButton} onPress={toggleMode}>
+            <Text style={styles.toggleText}>
+              {isLogin ? "Don't have an account? Sign up" : 'Already have an account? Sign in'}
+            </Text>
+          </TouchableOpacity>
+        </Animated.View>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  root: {
     flex: 1,
-    padding: 20,
-    backgroundColor: '#fff',
-    justifyContent: 'center',
+    // Linear gradient via backgroundImage on web; solid fallback on native
+    backgroundColor: '#062612',
+    ...(Platform.OS === 'web' ? {
+      backgroundImage: 'linear-gradient(180deg, #062612 0%, #113d23 100%)' as any,
+    } : {}),
   },
-  title: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    textAlign: 'center',
-    marginBottom: 10,
-    color: '#2e7d32',
+
+  scroll: {
+    flexGrow: 1,
+    paddingHorizontal: 28,
+    paddingTop: 110,
+    paddingBottom: 60,
+    maxWidth: 480,
+    width: '100%',
+    alignSelf: 'center' as any,
   },
-  subtitle: {
-    fontSize: 16,
-    textAlign: 'center',
-    marginBottom: 40,
-    color: '#666',
-  },
-  form: {
-    marginBottom: 30,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
-    padding: 15,
-    fontSize: 16,
-    marginBottom: 15,
-    backgroundColor: '#f9f9f9',
-  },
-  button: {
-    backgroundColor: '#2e7d32',
-    padding: 15,
-    borderRadius: 8,
+
+  // ── Hero ──
+  hero: {
     alignItems: 'center',
-    marginBottom: 15,
+    marginBottom: 52,
   },
-  disabledButton: {
-    backgroundColor: '#ccc',
+  heroTitle: {
+    fontSize: 52,
+    fontWeight: '400',
+    color: '#ffffff',
+    letterSpacing: -0.5,
+    textAlign: 'center',
+    marginBottom: 14,
+  },
+  tagline: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.32)',
+    letterSpacing: 5,
+    textAlign: 'center',
+  },
+
+  // ── Card ──
+  card: {
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    padding: 36,
+  },
+
+  // ── Button ──
+  button: {
+    backgroundColor: '#2d9e5f',
+    paddingVertical: 15,
+    borderRadius: 4,
+    alignItems: 'center',
+    marginTop: 12,
+    marginBottom: 24,
+    transitionProperty: 'background-color, box-shadow' as any,
+    transitionDuration: '200ms' as any,
+  },
+  buttonDisabled: {
+    backgroundColor: 'rgba(45,158,95,0.25)',
   },
   buttonText: {
-    color: 'white',
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  toggleButton: {
-    padding: 10,
-    alignItems: 'center',
-  },
-  toggleButtonText: {
-    color: '#2e7d32',
-    fontSize: 16,
-  },
-  demoSection: {
-    borderTopWidth: 1,
-    borderTopColor: '#eee',
-    paddingTop: 20,
-    alignItems: 'center',
-  },
-  demoTitle: {
+    color: '#ffffff',
     fontSize: 14,
-    color: '#666',
-    marginBottom: 10,
+    fontWeight: '600',
+    letterSpacing: 1,
   },
-  demoButton: {
-    backgroundColor: '#f0f0f0',
-    padding: 8,
-    borderRadius: 6,
-    marginBottom: 5,
-    minWidth: 150,
+
+  // ── Toggle ──
+  toggleButton: {
     alignItems: 'center',
   },
-  demoButtonText: {
-    color: '#666',
-    fontSize: 12,
+  toggleText: {
+    color: 'rgba(255,255,255,0.3)',
+    fontSize: 13,
+    fontWeight: '400',
   },
 });

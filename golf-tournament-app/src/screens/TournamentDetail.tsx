@@ -20,6 +20,109 @@ type Course = {
   url: string;
 };
 
+function ActiveScorecardsSection({ activeScorecards, courses, tournament, tournamentId, tournamentName, navigation }: any) {
+  const [expanded, setExpanded] = useState(true);
+  return (
+    <View style={activeStyles.section}>
+      <TouchableOpacity style={activeStyles.header} onPress={() => setExpanded(v => !v)} activeOpacity={0.7}>
+        <Text style={activeStyles.title}>ACTIVE SCORECARDS ({activeScorecards.length})</Text>
+        <Text style={activeStyles.arrow}>{expanded ? '▲' : '▼'}</Text>
+      </TouchableOpacity>
+      {expanded && activeScorecards.map((sc: any) => {
+        const course = courses.find((c: Course) => c.id === sc.courseId);
+        const scTeeIndex = tournament?.courseSettings?.[sc.courseId]?.selectedTeeIndex || 0;
+        return (
+          <TouchableOpacity
+            key={sc.id}
+            style={activeStyles.card}
+            onPress={() => navigation.navigate('GroupScorecard', {
+              scorecard: sc,
+              course: course || { id: sc.courseId, name: sc.courseName, holes: [], tees: [] },
+              tournamentId: tournament?.id || tournamentId,
+              tournamentName,
+              selectedTeeIndex: scTeeIndex,
+            })}
+            activeOpacity={0.7}
+          >
+            <View style={activeStyles.cardAccent} />
+            <View style={activeStyles.cardContent}>
+              <Text style={activeStyles.courseName}>{sc.courseName}</Text>
+              <Text style={activeStyles.players} numberOfLines={1}>
+                {Object.values(sc.playerNames).join(', ')}
+              </Text>
+              <Text style={activeStyles.meta}>{sc.playerIds.length} players · by {sc.createdByName}</Text>
+            </View>
+            <Text style={activeStyles.chevron}>›</Text>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
+}
+
+const activeStyles = StyleSheet.create({
+  section: {
+    paddingHorizontal: 20,
+    paddingTop: 24,
+    paddingBottom: 8,
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  title: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#2d9e5f',
+    letterSpacing: 2,
+  },
+  arrow: {
+    fontSize: 11,
+    color: '#2d9e5f',
+  },
+  card: {
+    backgroundColor: 'white',
+    borderRadius: 6,
+    marginBottom: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.06)',
+    overflow: 'hidden',
+  },
+  cardAccent: {
+    width: 3,
+    alignSelf: 'stretch',
+    backgroundColor: '#2d9e5f',
+  },
+  cardContent: {
+    flex: 1,
+    padding: 16,
+  },
+  courseName: {
+    fontSize: 15,
+    fontWeight: '500',
+    color: '#1a2e1b',
+    marginBottom: 4,
+  },
+  players: {
+    fontSize: 13,
+    color: '#555',
+    marginBottom: 3,
+  },
+  meta: {
+    fontSize: 11,
+    color: '#bbb',
+  },
+  chevron: {
+    fontSize: 20,
+    color: '#ccc',
+    paddingRight: 16,
+  },
+});
+
 export default function TournamentDetail({ navigation, route, user, sessionToken }: Props) {
   const { tournamentName, tournamentId, isExisting } = route.params;
   const [courses, setCourses] = useState<Course[]>([]);
@@ -403,6 +506,24 @@ export default function TournamentDetail({ navigation, route, user, sessionToken
         )}
       </View>
 
+      {/* Active Scorecards Section */}
+      {tournament && (tournament.scorecards || []).filter((sc: any) => !sc.submitted).length > 0 && (() => {
+        const activeScorecards = (tournament.scorecards || []).filter((sc: any) => !sc.submitted);
+        return (
+          <>
+            <ActiveScorecardsSection
+              activeScorecards={activeScorecards}
+              courses={courses}
+              tournament={tournament}
+              tournamentId={tournamentId}
+              tournamentName={tournamentName}
+              navigation={navigation}
+            />
+            <View style={styles.sectionDivider} />
+          </>
+        );
+      })()}
+
       {/* Courses Section */}
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
@@ -549,7 +670,7 @@ export default function TournamentDetail({ navigation, route, user, sessionToken
                       return (
                         <View key={sc.id} style={styles.scorecardRow}>
                           <TouchableOpacity
-                            style={styles.scorecardItem}
+                            style={[styles.scorecardItem, sc.submitted && styles.scorecardItemSubmitted]}
                             onPress={() => navigation.navigate('GroupScorecard', {
                               scorecard: sc,
                               course,
@@ -559,15 +680,21 @@ export default function TournamentDetail({ navigation, route, user, sessionToken
                             })}
                             activeOpacity={0.7}
                           >
-                            <Text style={styles.scorecardIcon}>📋</Text>
+                            <Text style={styles.scorecardIcon}>{sc.submitted ? '✅' : '📋'}</Text>
                             <View style={styles.scorecardInfo}>
                               <Text style={styles.scorecardPlayers} numberOfLines={1}>
                                 {Object.values(sc.playerNames).join(', ')}
                               </Text>
                               <Text style={styles.scorecardMeta}>
                                 {sc.playerIds.length} players · by {sc.createdByName}
+                                {sc.submitted ? ' · Submitted' : ' · In progress'}
                               </Text>
                             </View>
+                            {sc.submitted && (
+                              <View style={styles.scorecardSubmittedBadge}>
+                                <Text style={styles.scorecardSubmittedBadgeText}>✓</Text>
+                              </View>
+                            )}
                           </TouchableOpacity>
                           <TouchableOpacity
                             style={styles.scorecardDeleteBtn}
@@ -602,6 +729,8 @@ export default function TournamentDetail({ navigation, route, user, sessionToken
           })
         ))}
       </View>
+
+      <View style={styles.sectionDivider} />
 
       {/* Player Leaderboard Section */}
       {(tournament || isExisting) && courses.length > 0 && (
@@ -906,15 +1035,20 @@ export default function TournamentDetail({ navigation, route, user, sessionToken
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f2f5f2',
+    backgroundColor: '#f0f3f0',
   },
   scrollContent: {
-    paddingBottom: 40,
+    paddingBottom: 60,
+  },
+  sectionDivider: {
+    height: 1,
+    backgroundColor: 'rgba(0,0,0,0.06)',
+    marginHorizontal: 20,
   },
 
   // Header
   header: {
-    backgroundColor: '#1b5e20',
+    backgroundColor: '#062612',
     padding: 20,
     paddingTop: 60,
     paddingBottom: 28,
@@ -923,81 +1057,83 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   backButtonText: {
-    color: 'rgba(255,255,255,0.75)',
-    fontSize: 14,
-    fontWeight: '500',
+    color: 'rgba(255,255,255,0.5)',
+    fontSize: 13,
+    fontWeight: '400',
   },
   title: {
-    fontSize: 30,
-    fontWeight: 'bold',
+    fontSize: 28,
+    fontWeight: '300',
     color: '#ffffff',
     marginBottom: 12,
+    letterSpacing: -0.3,
   },
   headerSubtitle: {
-    fontSize: 14,
-    color: 'rgba(255,255,255,0.7)',
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.4)',
   },
   idBadge: {
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    borderRadius: 20,
-    paddingHorizontal: 14,
-    paddingVertical: 6,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 3,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
     alignSelf: 'flex-start',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
   },
   idBadgeText: {
-    color: 'rgba(255,255,255,0.9)',
-    fontSize: 13,
-    fontWeight: '600',
-    letterSpacing: 0.5,
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 11,
+    fontWeight: '500',
+    letterSpacing: 1,
   },
 
   // Sections
   section: {
-    padding: 20,
-    paddingBottom: 4,
+    paddingHorizontal: 20,
+    paddingTop: 24,
+    paddingBottom: 12,
   },
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 14,
+    marginBottom: 16,
   },
   sectionTitle: {
-    fontSize: 13,
-    fontWeight: 'bold',
-    color: '#1b5e20',
-    letterSpacing: 1,
-    marginBottom: 14,
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#2d9e5f',
+    letterSpacing: 2,
+    marginBottom: 0,
   },
   sectionToggle: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 6,
   },
   toggleArrow: {
     fontSize: 11,
-    color: '#1b5e20',
-    marginLeft: 6,
-    marginBottom: 14,
+    color: '#2d9e5f',
   },
   leaderboardBanner: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 10,
-  },
-  leaderboardBannerLink: {
-    fontSize: 13,
-    color: '#1565c0',
-    fontWeight: '600',
     marginBottom: 14,
   },
+  leaderboardBannerLink: {
+    fontSize: 12,
+    color: '#2d9e5f',
+    fontWeight: '500',
+  },
   simpleLeaderHeaderRow: {
-    backgroundColor: '#1b5e20',
+    backgroundColor: '#062612',
     paddingVertical: 10,
     paddingHorizontal: 14,
-    borderTopLeftRadius: 14,
-    borderTopRightRadius: 14,
+    borderTopLeftRadius: 6,
+    borderTopRightRadius: 6,
   },
   simpleLeaderRow: {
     flexDirection: 'row',
@@ -1008,43 +1144,45 @@ const styles = StyleSheet.create({
     borderBottomColor: '#f0f0f0',
   },
   simpleLeaderRowAlt: {
-    backgroundColor: '#f9fdf9',
+    backgroundColor: '#f7f9f7',
   },
   simpleLeaderHeaderText: {
-    fontSize: 12,
-    fontWeight: 'bold',
-    color: 'rgba(255,255,255,0.9)',
+    fontSize: 11,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.7)',
+    letterSpacing: 0.5,
   },
   simpleLeaderRank: {
-    fontSize: 14,
-    color: '#888',
-    fontWeight: '600',
+    fontSize: 13,
+    color: '#bbb',
+    fontWeight: '500',
   },
   simpleLeaderPlayer: {
-    fontSize: 15,
-    fontWeight: '600',
+    fontSize: 14,
+    fontWeight: '500',
     color: '#1a2e1b',
   },
   simpleLeaderPoints: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#7b1fa2',
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#064E3B',
   },
   simpleLeaderBirdie: {
     fontSize: 15,
-    fontWeight: 'bold',
+    fontWeight: '600',
     color: '#e64a19',
   },
   addButton: {
-    backgroundColor: '#1b5e20',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
+    backgroundColor: '#2d9e5f',
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 4,
   },
   addButtonText: {
     color: 'white',
-    fontSize: 14,
-    fontWeight: 'bold',
+    fontSize: 12,
+    fontWeight: '600',
+    letterSpacing: 0.3,
   },
 
   // Empty / loading states
@@ -1052,27 +1190,29 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 36,
     backgroundColor: 'white',
-    borderRadius: 16,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.06)',
   },
   emptyIcon: {
-    fontSize: 40,
+    fontSize: 36,
     marginBottom: 12,
   },
   emptyText: {
-    fontSize: 17,
-    color: '#555',
-    fontWeight: '600',
+    fontSize: 15,
+    color: '#888',
+    fontWeight: '400',
     marginBottom: 6,
     textAlign: 'center',
   },
   emptySubtext: {
-    fontSize: 13,
-    color: '#999',
+    fontSize: 12,
+    color: '#bbb',
     textAlign: 'center',
   },
   loadingText: {
-    fontSize: 15,
-    color: '#666',
+    fontSize: 14,
+    color: '#aaa',
     textAlign: 'center',
     padding: 30,
   },
@@ -1080,19 +1220,16 @@ const styles = StyleSheet.create({
   // Course cards
   courseCard: {
     backgroundColor: 'white',
-    borderRadius: 14,
-    marginBottom: 12,
+    borderRadius: 6,
+    marginBottom: 10,
     flexDirection: 'row',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 3,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.06)',
     overflow: 'hidden',
   },
   courseAccent: {
-    width: 5,
-    backgroundColor: '#2e7d32',
+    width: 3,
+    backgroundColor: '#2d9e5f',
   },
   courseCardContent: {
     flex: 1,
@@ -1104,8 +1241,8 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   courseName: {
-    fontSize: 17,
-    fontWeight: 'bold',
+    fontSize: 16,
+    fontWeight: '500',
     color: '#1a2e1b',
     marginBottom: 8,
   },
@@ -1116,38 +1253,38 @@ const styles = StyleSheet.create({
   },
   chip: {
     backgroundColor: '#f0f4f0',
-    borderRadius: 12,
-    paddingHorizontal: 10,
+    borderRadius: 3,
+    paddingHorizontal: 8,
     paddingVertical: 3,
   },
   chipText: {
-    fontSize: 12,
-    color: '#4a6741',
+    fontSize: 11,
+    color: '#666',
     fontWeight: '500',
   },
   teeChip: {
-    backgroundColor: '#e8f5e9',
+    backgroundColor: 'rgba(45,158,95,0.1)',
     borderWidth: 1,
-    borderColor: '#81c784',
+    borderColor: 'rgba(45,158,95,0.3)',
   },
   teeChipText: {
-    color: '#2e7d32',
+    color: '#2d9e5f',
     fontWeight: '600',
   },
   courseLocation: {
-    fontSize: 13,
-    color: '#777',
+    fontSize: 12,
+    color: '#aaa',
     marginBottom: 4,
   },
   courseDetails: {
-    fontSize: 12,
-    color: '#888',
+    fontSize: 11,
+    color: '#bbb',
     marginBottom: 2,
   },
   selectedTeeText: {
     fontSize: 12,
-    color: '#2e7d32',
-    fontWeight: 'bold',
+    color: '#2d9e5f',
+    fontWeight: '500',
     marginTop: 4,
   },
 
@@ -1157,9 +1294,10 @@ const styles = StyleSheet.create({
     paddingLeft: 38,
   },
   teeSelectionLabel: {
-    fontSize: 13,
-    fontWeight: 'bold',
-    color: '#1b5e20',
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#2d9e5f',
+    letterSpacing: 1.5,
     marginBottom: 8,
   },
   teeButtonsRow: {
@@ -1168,26 +1306,27 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   teeSelectionButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 7,
-    borderRadius: 20,
-    borderWidth: 2,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 4,
+    borderWidth: 1,
     borderColor: '#ddd',
     backgroundColor: '#fafafa',
     marginRight: 8,
     marginBottom: 8,
   },
   teeSelectionButtonSelected: {
-    borderColor: '#2e7d32',
-    backgroundColor: '#2e7d32',
+    borderColor: '#2d9e5f',
+    backgroundColor: '#2d9e5f',
   },
   teeSelectionButtonText: {
-    fontSize: 13,
-    fontWeight: 'bold',
-    color: '#666',
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#777',
   },
   teeSelectionButtonTextSelected: {
     color: 'white',
+    fontWeight: '600',
   },
 
   // Course action buttons
@@ -1198,28 +1337,28 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   editCourseButton: {
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 8,
-    borderWidth: 1.5,
-    borderColor: '#1976d2',
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: '#1565c0',
   },
   editCourseButtonText: {
-    color: '#1976d2',
-    fontSize: 13,
-    fontWeight: '600',
+    color: '#1565c0',
+    fontSize: 12,
+    fontWeight: '500',
   },
   deleteCourseButton: {
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 8,
-    borderWidth: 1.5,
-    borderColor: '#e53935',
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: '#c62828',
   },
   deleteCourseButtonText: {
-    color: '#e53935',
-    fontSize: 13,
-    fontWeight: '600',
+    color: '#c62828',
+    fontSize: 12,
+    fontWeight: '500',
   },
 
   // Order controls
@@ -1231,36 +1370,33 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
   orderButton: {
-    backgroundColor: 'rgba(46,125,50,0.1)',
-    borderRadius: 4,
-    width: 28,
-    height: 22,
+    backgroundColor: 'rgba(45,158,95,0.08)',
+    borderRadius: 3,
+    width: 26,
+    height: 20,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 3,
   },
   disabledOrderButton: {
-    backgroundColor: 'rgba(200,200,200,0.15)',
+    backgroundColor: 'rgba(200,200,200,0.1)',
   },
   orderButtonText: {
-    color: '#2e7d32',
-    fontSize: 13,
-    fontWeight: 'bold',
+    color: '#2d9e5f',
+    fontSize: 12,
+    fontWeight: '600',
   },
   disabledOrderButtonText: {
-    color: '#ccc',
+    color: '#ddd',
   },
 
   // Leaderboard
   leaderboardCard: {
     backgroundColor: 'white',
-    borderRadius: 14,
+    borderRadius: 6,
     overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 3,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.06)',
     marginBottom: 12,
     width: '100%',
   },
@@ -1271,7 +1407,7 @@ const styles = StyleSheet.create({
     padding: 0,
   },
   leaderboardHeaderRow: {
-    backgroundColor: '#1b5e20',
+    backgroundColor: '#062612',
     paddingVertical: 10,
   },
   leaderboardRow: {
@@ -1308,37 +1444,38 @@ const styles = StyleSheet.create({
     marginHorizontal: 1,
   },
   leaderboardHeaderText: {
-    fontSize: 12,
-    fontWeight: 'bold',
-    color: 'rgba(255,255,255,0.9)',
+    fontSize: 11,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.7)',
     textAlign: 'center',
+    letterSpacing: 0.5,
   },
   playerNameText: {
-    fontSize: 15,
-    fontWeight: '600',
+    fontSize: 14,
+    fontWeight: '500',
     color: '#1a2e1b',
   },
   scoreText: {
-    fontSize: 15,
-    color: '#444',
+    fontSize: 14,
+    color: '#555',
     textAlign: 'center',
   },
   birdieText: {
-    fontSize: 15,
+    fontSize: 14,
     color: '#e64a19',
-    fontWeight: 'bold',
+    fontWeight: '600',
     textAlign: 'center',
   },
   pointsText: {
-    fontSize: 15,
+    fontSize: 14,
     color: '#7b1fa2',
-    fontWeight: 'bold',
+    fontWeight: '600',
     textAlign: 'center',
   },
   toParText: {
-    fontSize: 15,
-    color: '#1b5e20',
-    fontWeight: 'bold',
+    fontSize: 14,
+    color: '#2d9e5f',
+    fontWeight: '600',
     textAlign: 'center',
   },
   clickableScoreText: {
@@ -1352,45 +1489,35 @@ const styles = StyleSheet.create({
     paddingTop: 8,
   },
   primaryButton: {
-    backgroundColor: '#1b5e20',
-    padding: 16,
-    borderRadius: 12,
+    backgroundColor: '#2d9e5f',
+    padding: 15,
+    borderRadius: 4,
     alignItems: 'center',
     marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.15,
-    shadowRadius: 6,
-    elevation: 4,
   },
   disabledButton: {
-    backgroundColor: '#ccc',
-    shadowOpacity: 0,
-    elevation: 0,
+    backgroundColor: 'rgba(45,158,95,0.25)',
   },
   primaryButtonText: {
     color: 'white',
-    fontSize: 16,
-    fontWeight: 'bold',
-    letterSpacing: 0.3,
+    fontSize: 14,
+    fontWeight: '600',
+    letterSpacing: 0.5,
   },
   shareButton: {
-    backgroundColor: '#2e7d32',
-    padding: 16,
-    borderRadius: 12,
+    backgroundColor: 'transparent',
+    padding: 15,
+    borderRadius: 4,
     alignItems: 'center',
     marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.15,
-    shadowRadius: 6,
-    elevation: 4,
+    borderWidth: 1,
+    borderColor: '#2d9e5f',
   },
   shareButtonText: {
-    color: 'white',
-    fontSize: 15,
-    fontWeight: 'bold',
-    letterSpacing: 0.3,
+    color: '#2d9e5f',
+    fontSize: 13,
+    fontWeight: '500',
+    letterSpacing: 0.5,
   },
 
   // Modals
@@ -1403,63 +1530,66 @@ const styles = StyleSheet.create({
   modalContent: {
     backgroundColor: 'white',
     margin: 20,
-    padding: 25,
-    borderRadius: 16,
+    padding: 24,
+    borderRadius: 6,
     width: '90%',
     maxWidth: 400,
   },
   modalTitle: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: '#1b5e20',
+    fontSize: 18,
+    fontWeight: '400',
+    color: '#062612',
     marginBottom: 8,
     textAlign: 'center',
+    letterSpacing: 0.2,
   },
   modalSubtitle: {
-    fontSize: 14,
-    color: '#666',
+    fontSize: 13,
+    color: '#aaa',
     marginBottom: 20,
     textAlign: 'center',
   },
   urlInput: {
     borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
-    padding: 15,
+    borderColor: '#e0e0e0',
+    borderRadius: 6,
+    padding: 14,
     fontSize: 14,
-    marginBottom: 25,
-    backgroundColor: '#f9f9f9',
+    marginBottom: 24,
+    backgroundColor: '#fafafa',
     minHeight: 60,
     textAlignVertical: 'top',
+    color: '#1a1a1a',
   },
   modalActions: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    gap: 10,
   },
   modalCancelButton: {
     flex: 0.45,
-    padding: 15,
+    padding: 13,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
+    borderColor: '#e0e0e0',
+    borderRadius: 4,
   },
   modalCancelText: {
-    color: '#666',
-    fontSize: 16,
-    fontWeight: 'bold',
+    color: '#aaa',
+    fontSize: 14,
+    fontWeight: '500',
   },
   modalAddButton: {
     flex: 0.45,
-    backgroundColor: '#1b5e20',
-    padding: 15,
-    borderRadius: 8,
+    backgroundColor: '#2d9e5f',
+    padding: 13,
+    borderRadius: 4,
     alignItems: 'center',
   },
   modalAddText: {
     color: 'white',
-    fontSize: 16,
-    fontWeight: 'bold',
+    fontSize: 14,
+    fontWeight: '600',
   },
 
   // Edit course modal table
@@ -1467,15 +1597,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     paddingHorizontal: 8,
     paddingVertical: 6,
-    backgroundColor: '#f0f0f0',
-    borderRadius: 6,
+    backgroundColor: '#f5f5f5',
+    borderRadius: 4,
     marginBottom: 4,
   },
   editHoleHeaderText: {
-    fontSize: 13,
-    fontWeight: 'bold',
-    color: '#333',
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#888',
     textAlign: 'center',
+    letterSpacing: 0.5,
   },
   editHoleRow: {
     flexDirection: 'row',
@@ -1487,22 +1618,23 @@ const styles = StyleSheet.create({
   },
   editHoleNumber: {
     width: 40,
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: '#333',
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#555',
     textAlign: 'center',
   },
   editHoleInput: {
     width: 60,
     borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 6,
+    borderColor: '#e0e0e0',
+    borderRadius: 4,
     paddingVertical: 4,
     paddingHorizontal: 8,
     fontSize: 14,
     textAlign: 'center',
     marginHorizontal: 2,
     backgroundColor: '#fafafa',
+    color: '#1a1a1a',
   },
 
   // Group Scorecards
@@ -1510,23 +1642,23 @@ const styles = StyleSheet.create({
     marginTop: 10,
     paddingVertical: 10,
     paddingHorizontal: 14,
-    borderRadius: 8,
-    borderWidth: 1.5,
-    borderColor: '#1b5e20',
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: '#2d9e5f',
     borderStyle: 'dashed',
     alignItems: 'center',
   },
   createScorecardText: {
-    color: '#1b5e20',
-    fontSize: 14,
-    fontWeight: '600',
+    color: '#2d9e5f',
+    fontSize: 13,
+    fontWeight: '500',
   },
   scorecardRow: {
     flexDirection: 'row',
     alignItems: 'center',
     marginTop: 8,
-    backgroundColor: '#f0f7f0',
-    borderRadius: 8,
+    backgroundColor: '#f5f8f5',
+    borderRadius: 6,
     overflow: 'hidden',
   },
   scorecardItem: {
@@ -1538,28 +1670,45 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   scorecardIcon: {
-    fontSize: 18,
+    fontSize: 14,
   },
   scorecardInfo: {
     flex: 1,
   },
   scorecardPlayers: {
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: '500',
     color: '#1a2e1b',
   },
   scorecardMeta: {
     fontSize: 11,
-    color: '#666',
+    color: '#aaa',
     marginTop: 1,
+  },
+  scorecardItemSubmitted: {
+    backgroundColor: '#f5f8f5',
+  },
+  scorecardSubmittedBadge: {
+    backgroundColor: '#2d9e5f',
+    borderRadius: 3,
+    width: 20,
+    height: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 4,
+  },
+  scorecardSubmittedBadgeText: {
+    color: 'white',
+    fontSize: 11,
+    fontWeight: 'bold',
   },
   scorecardDeleteBtn: {
     padding: 12,
     backgroundColor: 'transparent',
   },
   scorecardDeleteText: {
-    fontSize: 14,
-    color: '#c62828',
+    fontSize: 12,
+    color: '#ccc',
     fontWeight: 'bold',
   },
 
@@ -1574,32 +1723,33 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   playerSelectRowSelected: {
-    backgroundColor: '#f0f7f0',
+    backgroundColor: '#f5f8f5',
   },
   playerSelectCheck: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: '#ccc',
+    width: 22,
+    height: 22,
+    borderRadius: 3,
+    borderWidth: 1.5,
+    borderColor: '#ddd',
     alignItems: 'center',
     justifyContent: 'center',
   },
   playerSelectCheckSelected: {
-    backgroundColor: '#1b5e20',
-    borderColor: '#1b5e20',
+    backgroundColor: '#2d9e5f',
+    borderColor: '#2d9e5f',
   },
   playerSelectCheckMark: {
     color: 'white',
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: 'bold',
   },
   playerSelectName: {
     fontSize: 15,
-    color: '#333',
+    color: '#555',
+    fontWeight: '400',
   },
   playerSelectNameSelected: {
-    color: '#1b5e20',
-    fontWeight: '600',
+    color: '#062612',
+    fontWeight: '500',
   },
 });

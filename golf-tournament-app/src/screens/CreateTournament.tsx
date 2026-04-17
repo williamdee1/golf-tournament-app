@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, Alert, ScrollView } from 'react-native';
 import { NavigationProp } from '@react-navigation/native';
 
 type Props = {
@@ -15,43 +15,42 @@ export default function CreateTournament({ navigation }: Props) {
       return;
     }
 
-    // Create tournament and navigate to tournament detail page
-    console.log(`Creating tournament: ${tournamentName}`);
-
-    // Navigate to tournament detail screen with the tournament name
     navigation.navigate('TournamentDetail', {
       tournamentName: tournamentName.trim(),
-      tournamentId: Date.now().toString() // Simple ID generation for now
+      tournamentId: Date.now().toString()
     });
   };
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Create New Tournament</Text>
-      <Text style={styles.subtitle}>Enter a name for your golf tournament</Text>
+      <View style={styles.header}>
+        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+          <Text style={styles.backButtonText}>← Back</Text>
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>New Tournament</Text>
+        <Text style={styles.headerSubtitle}>Give your tournament a name</Text>
+      </View>
 
-      <TextInput
-        style={styles.input}
-        placeholder="e.g., Summer Golf Challenge 2024"
-        value={tournamentName}
-        onChangeText={setTournamentName}
-        autoFocus
-      />
+      <ScrollView contentContainerStyle={styles.body}>
+        <Text style={styles.inputLabel}>TOURNAMENT NAME</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="e.g., Summer Golf Challenge 2026"
+          placeholderTextColor="#bbb"
+          value={tournamentName}
+          onChangeText={setTournamentName}
+          autoFocus
+        />
 
-      <TouchableOpacity
-        style={[styles.button, !tournamentName.trim() && styles.disabledButton]}
-        onPress={createTournament}
-        disabled={!tournamentName.trim()}
-      >
-        <Text style={styles.buttonText}>Create Tournament</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity
-        style={styles.cancelButton}
-        onPress={() => navigation.goBack()}
-      >
-        <Text style={styles.cancelButtonText}>Cancel</Text>
-      </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.button, !tournamentName.trim() && styles.disabledButton]}
+          onPress={createTournament}
+          disabled={!tournamentName.trim()}
+          activeOpacity={0.85}
+        >
+          <Text style={styles.buttonText}>Create Tournament</Text>
+        </TouchableOpacity>
+      </ScrollView>
     </View>
   );
 }
@@ -59,53 +58,69 @@ export default function CreateTournament({ navigation }: Props) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 20,
-    backgroundColor: '#fff',
-    justifyContent: 'center',
+    backgroundColor: '#f0f3f0',
   },
-  title: {
+  header: {
+    backgroundColor: '#062612',
+    paddingHorizontal: 20,
+    paddingTop: 52,
+    paddingBottom: 28,
+  },
+  backButton: {
+    marginBottom: 16,
+  },
+  backButtonText: {
+    color: 'rgba(255,255,255,0.5)',
+    fontSize: 13,
+    fontWeight: '400',
+  },
+  headerTitle: {
     fontSize: 28,
-    fontWeight: 'bold',
-    textAlign: 'center',
-    marginBottom: 10,
-    color: '#2e7d32',
+    fontWeight: '300',
+    color: '#ffffff',
+    marginBottom: 6,
+    letterSpacing: -0.3,
   },
-  subtitle: {
-    fontSize: 16,
-    textAlign: 'center',
-    marginBottom: 40,
-    color: '#666',
+  headerSubtitle: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.4)',
+    letterSpacing: 0.3,
+  },
+  body: {
+    padding: 20,
+    paddingTop: 28,
+  },
+  inputLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#2d9e5f',
+    letterSpacing: 2,
+    marginBottom: 8,
   },
   input: {
     borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
-    padding: 15,
-    fontSize: 16,
-    marginBottom: 30,
-    backgroundColor: '#f9f9f9',
+    borderColor: '#e0e0e0',
+    borderRadius: 6,
+    padding: 14,
+    fontSize: 15,
+    marginBottom: 20,
+    backgroundColor: '#ffffff',
+    color: '#1a1a1a',
+    fontWeight: '300',
   },
   button: {
-    backgroundColor: '#2e7d32',
+    backgroundColor: '#2d9e5f',
     padding: 15,
-    borderRadius: 8,
+    borderRadius: 4,
     alignItems: 'center',
-    marginBottom: 15,
   },
   disabledButton: {
-    backgroundColor: '#ccc',
+    backgroundColor: 'rgba(45,158,95,0.25)',
   },
   buttonText: {
     color: 'white',
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  cancelButton: {
-    padding: 15,
-    alignItems: 'center',
-  },
-  cancelButtonText: {
-    color: '#666',
-    fontSize: 16,
+    fontSize: 14,
+    fontWeight: '600',
+    letterSpacing: 0.5,
   },
 });

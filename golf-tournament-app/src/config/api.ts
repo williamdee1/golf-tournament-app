@@ -54,6 +54,10 @@ export const API_ENDPOINTS = {
     `${API_BASE_URL}/api/tournaments/${tournamentId}/scorecards`,
   deleteScorecard: (tournamentId: string, scorecardId: string) =>
     `${API_BASE_URL}/api/tournaments/${tournamentId}/scorecards/${scorecardId}`,
+  submitScorecard: (tournamentId: string, scorecardId: string) =>
+    `${API_BASE_URL}/api/tournaments/${tournamentId}/scorecards/${scorecardId}/submit`,
+  unsubmitScorecard: (tournamentId: string, scorecardId: string) =>
+    `${API_BASE_URL}/api/tournaments/${tournamentId}/scorecards/${scorecardId}/unsubmit`,
 
   // Golf Course Data
   golfSearch: `${API_BASE_URL}/api/golf/search`,

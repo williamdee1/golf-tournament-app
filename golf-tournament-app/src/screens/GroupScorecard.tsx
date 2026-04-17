@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, Modal } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, Modal, Alert } from 'react-native';
 import { API_ENDPOINTS } from '../config/api';
 
 type Props = {
@@ -17,6 +17,8 @@ export default function GroupScorecard({ navigation, route, user, sessionToken }
   const [handicaps, setHandicaps] = useState<{ [playerId: string]: number }>({});
   const [editingHandicap, setEditingHandicap] = useState<string | null>(null);
   const [handicapText, setHandicapText] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(scorecard.submitted || false);
 
   const holes = course.holes || [];
   const currentHole = holes[currentHoleIndex];
@@ -78,6 +80,42 @@ export default function GroupScorecard({ navigation, route, user, sessionToken }
     }
   };
 
+  const handleSubmitScorecard = async () => {
+    const confirmed = window.confirm('Submit this scorecard? Scores will be locked but you can re-open to edit if needed.');
+    if (!confirmed) return;
+    setIsSubmitting(true);
+    try {
+      const response = await fetch(API_ENDPOINTS.submitScorecard(tournamentId, scorecard.id), {
+        method: 'PATCH',
+        headers: { 'Authorization': `Bearer ${sessionToken}` },
+      });
+      const data = await response.json();
+      if (data.success) setSubmitted(true);
+    } catch (error) {
+      console.error('Error submitting scorecard:', error);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleUnsubmit = async () => {
+    const confirmed = window.confirm('Re-open this scorecard so scores can be edited?');
+    if (!confirmed) return;
+    setIsSubmitting(true);
+    try {
+      const response = await fetch(API_ENDPOINTS.unsubmitScorecard(tournamentId, scorecard.id), {
+        method: 'PATCH',
+        headers: { 'Authorization': `Bearer ${sessionToken}` },
+      });
+      const data = await response.json();
+      if (data.success) setSubmitted(false);
+    } catch (error) {
+      console.error('Error re-opening scorecard:', error);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const getStrokesReceived = (playerId: string, holeSI: number): number => {
     const h = handicaps[playerId] ?? 0;
     return Math.floor(h / 18) + (holeSI <= (h % 18) ? 1 : 0);
@@ -132,6 +170,9 @@ export default function GroupScorecard({ navigation, route, user, sessionToken }
 
         {/* Header */}
         <View style={styles.header}>
+          <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+            <Text style={styles.backButtonText}>← Back</Text>
+          </TouchableOpacity>
           <Text style={styles.courseName}>{course.name}</Text>
           <Text style={styles.tournamentName}>{tournamentName}</Text>
         </View>
@@ -204,6 +245,17 @@ export default function GroupScorecard({ navigation, route, user, sessionToken }
           </View>
         </ScrollView>
 
+        {/* Submitted Banner */}
+        {submitted && (
+          <View style={styles.submittedBanner}>
+            <Text style={styles.submittedCheck}>✓</Text>
+            <View>
+              <Text style={styles.submittedBannerTitle}>Scorecard Submitted</Text>
+              <Text style={styles.submittedBannerSub}>Scores are locked</Text>
+            </View>
+          </View>
+        )}
+
         {/* Player Cards */}
         <View style={styles.playersSection}>
           {scorecard.playerIds.map((playerId: string) => {
@@ -246,43 +298,94 @@ export default function GroupScorecard({ navigation, route, user, sessionToken }
                   </View>
                 </View>
 
-                <View style={styles.scoreRow}>
-                  <TouchableOpacity
-                    style={styles.scoreBtn}
-                    onPress={() => saveScore(playerId, holeNumber, Math.max(1, (currentScore ?? holePar) - 1))}
-                  >
-                    <Text style={styles.scoreBtnText}>−</Text>
-                  </TouchableOpacity>
-
-                  <View style={[styles.scoreDisplay, scoreInfo && { borderColor: scoreInfo.color }]}>
-                    {currentScore !== undefined ? (
-                      <>
-                        <Text style={[styles.scoreValue, scoreInfo && { color: scoreInfo.color }]}>
-                          {currentScore}
-                        </Text>
-                        <Text style={[styles.scoreLabel, { color: scoreInfo?.color || '#666' }]}>
-                          {scoreInfo?.label}
-                        </Text>
-                        {stablefordPts !== null && (
-                          <Text style={styles.stablefordText}>{stablefordPts} pts</Text>
-                        )}
-                      </>
-                    ) : (
-                      <Text style={styles.scorePlaceholder}>-</Text>
-                    )}
+                {submitted ? (
+                  <View style={styles.scoreRowReadOnly}>
+                    <View style={[styles.scoreDisplay, scoreInfo && { borderColor: scoreInfo.color }]}>
+                      {currentScore !== undefined ? (
+                        <>
+                          <Text style={[styles.scoreValue, scoreInfo && { color: scoreInfo.color }]}>
+                            {currentScore}
+                          </Text>
+                          <Text style={[styles.scoreLabel, { color: scoreInfo?.color || '#666' }]}>
+                            {scoreInfo?.label}
+                          </Text>
+                          {stablefordPts !== null && (
+                            <Text style={styles.stablefordText}>{stablefordPts} pts</Text>
+                          )}
+                        </>
+                      ) : (
+                        <Text style={styles.scorePlaceholder}>-</Text>
+                      )}
+                    </View>
                   </View>
+                ) : (
+                  <View style={styles.scoreRow}>
+                    <TouchableOpacity
+                      style={styles.scoreBtn}
+                      onPress={() => saveScore(playerId, holeNumber, Math.max(1, (currentScore ?? holePar) - 1))}
+                    >
+                      <Text style={styles.scoreBtnText}>−</Text>
+                    </TouchableOpacity>
 
-                  <TouchableOpacity
-                    style={styles.scoreBtn}
-                    onPress={() => saveScore(playerId, holeNumber, Math.min(20, (currentScore ?? holePar) + 1))}
-                  >
-                    <Text style={styles.scoreBtnText}>+</Text>
-                  </TouchableOpacity>
-                </View>
+                    <View style={[styles.scoreDisplay, scoreInfo && { borderColor: scoreInfo.color }]}>
+                      {currentScore !== undefined ? (
+                        <>
+                          <Text style={[styles.scoreValue, scoreInfo && { color: scoreInfo.color }]}>
+                            {currentScore}
+                          </Text>
+                          <Text style={[styles.scoreLabel, { color: scoreInfo?.color || '#666' }]}>
+                            {scoreInfo?.label}
+                          </Text>
+                          {stablefordPts !== null && (
+                            <Text style={styles.stablefordText}>{stablefordPts} pts</Text>
+                          )}
+                        </>
+                      ) : (
+                        <Text style={styles.scorePlaceholder}>-</Text>
+                      )}
+                    </View>
+
+                    <TouchableOpacity
+                      style={styles.scoreBtn}
+                      onPress={() => saveScore(playerId, holeNumber, Math.min(20, (currentScore ?? holePar) + 1))}
+                    >
+                      <Text style={styles.scoreBtnText}>+</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
               </View>
             );
           })}
         </View>
+
+        {/* Submit / Edit Scorecard — creator only */}
+        {scorecard.createdBy === user?.id && (
+          <View style={styles.submitSection}>
+            {submitted ? (
+              <TouchableOpacity
+                style={[styles.editButton, isSubmitting && styles.submitButtonDisabled]}
+                onPress={handleUnsubmit}
+                disabled={isSubmitting}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.editButtonText}>
+                  {isSubmitting ? 'Updating...' : '✏️  Edit Scores'}
+                </Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                style={[styles.submitButton, isSubmitting && styles.submitButtonDisabled]}
+                onPress={handleSubmitScorecard}
+                disabled={isSubmitting}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.submitButtonText}>
+                  {isSubmitting ? 'Submitting...' : 'Submit Scorecard'}
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
 
       </ScrollView>
 
@@ -337,33 +440,43 @@ export default function GroupScorecard({ navigation, route, user, sessionToken }
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f4f6f4',
+    backgroundColor: '#f0f3f0',
   },
   content: {
     paddingBottom: 40,
   },
   errorText: {
     padding: 20,
-    color: '#666',
+    color: '#aaa',
     textAlign: 'center',
   },
 
   // Header
   header: {
-    backgroundColor: '#1b5e20',
+    backgroundColor: '#062612',
     paddingHorizontal: 20,
-    paddingVertical: 18,
-    paddingTop: 24,
+    paddingTop: 52,
+    paddingBottom: 20,
+  },
+  backButton: {
+    marginBottom: 12,
+  },
+  backButtonText: {
+    color: 'rgba(255,255,255,0.5)',
+    fontSize: 13,
+    fontWeight: '400',
   },
   courseName: {
-    fontSize: 20,
-    fontWeight: 'bold',
+    fontSize: 22,
+    fontWeight: '300',
     color: 'white',
+    letterSpacing: -0.3,
   },
   tournamentName: {
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.75)',
-    marginTop: 2,
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.4)',
+    marginTop: 4,
+    letterSpacing: 0.3,
   },
 
   // Hole Navigation
@@ -373,40 +486,41 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     backgroundColor: 'white',
     paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#e8e8e8',
+    borderBottomColor: 'rgba(0,0,0,0.06)',
   },
   navButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    backgroundColor: '#1b5e20',
-    borderRadius: 8,
-    minWidth: 80,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    backgroundColor: '#2d9e5f',
+    borderRadius: 4,
+    minWidth: 90,
     alignItems: 'center',
   },
   navButtonDisabled: {
-    backgroundColor: '#e0e0e0',
+    backgroundColor: '#ebebeb',
   },
   navButtonText: {
     color: 'white',
-    fontWeight: 'bold',
-    fontSize: 14,
+    fontWeight: '600',
+    fontSize: 13,
   },
   navButtonTextDisabled: {
-    color: '#aaa',
+    color: '#bbb',
   },
   holeInfo: {
     alignItems: 'center',
   },
   holeNumber: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: '#1b5e20',
+    fontSize: 20,
+    fontWeight: '300',
+    color: '#062612',
+    letterSpacing: -0.3,
   },
   holeTotal: {
-    fontSize: 12,
-    color: '#888',
+    fontSize: 11,
+    color: '#bbb',
   },
 
   // Hole Details chips
@@ -418,26 +532,26 @@ const styles = StyleSheet.create({
     gap: 10,
     backgroundColor: 'white',
     borderBottomWidth: 1,
-    borderBottomColor: '#e8e8e8',
+    borderBottomColor: 'rgba(0,0,0,0.06)',
   },
   holeDetailChip: {
     alignItems: 'center',
-    backgroundColor: '#f0f7f0',
-    borderRadius: 10,
+    backgroundColor: '#f0f4f0',
+    borderRadius: 4,
     paddingHorizontal: 18,
     paddingVertical: 8,
     minWidth: 70,
   },
   holeDetailLabel: {
-    fontSize: 10,
-    color: '#666',
-    fontWeight: '600',
-    letterSpacing: 0.5,
+    fontSize: 9,
+    color: '#aaa',
+    fontWeight: '700',
+    letterSpacing: 1.5,
   },
   holeDetailValue: {
     fontSize: 20,
-    fontWeight: 'bold',
-    color: '#1b5e20',
+    fontWeight: '400',
+    color: '#062612',
     marginTop: 2,
   },
 
@@ -445,7 +559,7 @@ const styles = StyleSheet.create({
   dotsScroll: {
     backgroundColor: 'white',
     borderBottomWidth: 1,
-    borderBottomColor: '#e8e8e8',
+    borderBottomColor: 'rgba(0,0,0,0.06)',
   },
   dotsRow: {
     flexDirection: 'row',
@@ -454,23 +568,23 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   dot: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#e0e0e0',
+    width: 34,
+    height: 34,
+    borderRadius: 3,
+    backgroundColor: '#ebebeb',
     alignItems: 'center',
     justifyContent: 'center',
   },
   dotActive: {
-    backgroundColor: '#1b5e20',
+    backgroundColor: '#062612',
   },
   dotComplete: {
-    backgroundColor: '#4caf50',
+    backgroundColor: '#2d9e5f',
   },
   dotText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#999',
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#bbb',
   },
   dotTextActive: {
     color: 'white',
@@ -483,13 +597,10 @@ const styles = StyleSheet.create({
   },
   playerCard: {
     backgroundColor: 'white',
-    borderRadius: 14,
+    borderRadius: 6,
     padding: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    elevation: 2,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.06)',
   },
   playerCardTop: {
     flexDirection: 'row',
@@ -501,35 +612,36 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   playerName: {
-    fontSize: 17,
-    fontWeight: '700',
+    fontSize: 16,
+    fontWeight: '500',
     color: '#1a2e1b',
   },
   strokesNote: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#e65100',
-    marginTop: 2,
+    marginTop: 3,
   },
   playerStats: {
     alignItems: 'flex-end',
     gap: 4,
   },
   handicapBadge: {
-    backgroundColor: '#e8f5e9',
-    borderRadius: 12,
+    backgroundColor: 'rgba(45,158,95,0.08)',
+    borderRadius: 3,
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderWidth: 1,
-    borderColor: '#c8e6c9',
+    borderColor: 'rgba(45,158,95,0.2)',
   },
   handicapBadgeText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '600',
-    color: '#2e7d32',
+    color: '#2d9e5f',
+    letterSpacing: 0.3,
   },
   totalScore: {
-    fontSize: 12,
-    color: '#888',
+    fontSize: 11,
+    color: '#bbb',
   },
 
   // Score controls
@@ -542,27 +654,22 @@ const styles = StyleSheet.create({
   scoreBtn: {
     width: 56,
     height: 56,
-    borderRadius: 28,
-    backgroundColor: '#1b5e20',
+    borderRadius: 4,
+    backgroundColor: '#2d9e5f',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
-    elevation: 3,
   },
   scoreBtnText: {
     fontSize: 28,
-    fontWeight: 'bold',
+    fontWeight: '300',
     color: 'white',
     lineHeight: 32,
   },
   scoreDisplay: {
     width: 110,
     minHeight: 80,
-    borderRadius: 14,
-    borderWidth: 2,
+    borderRadius: 6,
+    borderWidth: 1.5,
     borderColor: '#e0e0e0',
     alignItems: 'center',
     justifyContent: 'center',
@@ -571,13 +678,14 @@ const styles = StyleSheet.create({
   },
   scoreValue: {
     fontSize: 36,
-    fontWeight: 'bold',
-    color: '#333',
+    fontWeight: '300',
+    color: '#1a1a1a',
   },
   scoreLabel: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '600',
     marginTop: 2,
+    letterSpacing: 0.3,
   },
   stablefordText: {
     fontSize: 11,
@@ -587,7 +695,74 @@ const styles = StyleSheet.create({
   },
   scorePlaceholder: {
     fontSize: 32,
-    color: '#ccc',
+    color: '#ddd',
+  },
+
+  // Score row (read-only when submitted)
+  scoreRowReadOnly: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 4,
+  },
+
+  // Submit / edit section
+  submittedBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#062612',
+    margin: 12,
+    borderRadius: 4,
+    paddingVertical: 14,
+    paddingHorizontal: 18,
+    gap: 14,
+  },
+  submittedCheck: {
+    fontSize: 22,
+    color: '#2d9e5f',
+    fontWeight: 'bold',
+  },
+  submittedBannerTitle: {
+    color: '#ffffff',
+    fontWeight: '500',
+    fontSize: 14,
+  },
+  submittedBannerSub: {
+    color: 'rgba(255,255,255,0.4)',
+    fontSize: 11,
+    marginTop: 2,
+    letterSpacing: 0.3,
+  },
+  submitSection: {
+    padding: 16,
+    paddingTop: 8,
+  },
+  submitButton: {
+    backgroundColor: '#2d9e5f',
+    borderRadius: 4,
+    padding: 15,
+    alignItems: 'center',
+  },
+  submitButtonDisabled: {
+    backgroundColor: 'rgba(45,158,95,0.25)',
+  },
+  submitButtonText: {
+    color: 'white',
+    fontWeight: '600',
+    fontSize: 14,
+    letterSpacing: 0.5,
+  },
+  editButton: {
+    borderRadius: 4,
+    padding: 15,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#2d9e5f',
+    backgroundColor: 'transparent',
+  },
+  editButtonText: {
+    color: '#2d9e5f',
+    fontWeight: '600',
+    fontSize: 14,
   },
 
   // Handicap Modal
@@ -599,33 +774,36 @@ const styles = StyleSheet.create({
   },
   modalBox: {
     backgroundColor: 'white',
-    borderRadius: 16,
+    borderRadius: 6,
     padding: 24,
     width: '80%',
     maxWidth: 320,
   },
   modalTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#1b5e20',
+    fontSize: 16,
+    fontWeight: '400',
+    color: '#062612',
     textAlign: 'center',
+    letterSpacing: 0.2,
   },
   modalSubtitle: {
-    fontSize: 14,
-    color: '#666',
+    fontSize: 13,
+    color: '#aaa',
     textAlign: 'center',
     marginTop: 4,
     marginBottom: 16,
   },
   handicapInput: {
     borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
+    borderColor: '#e0e0e0',
+    borderRadius: 6,
     padding: 14,
     fontSize: 24,
+    fontWeight: '300',
     textAlign: 'center',
     marginBottom: 20,
-    backgroundColor: '#f9f9f9',
+    backgroundColor: '#fafafa',
+    color: '#1a1a1a',
   },
   modalButtons: {
     flexDirection: 'row',
@@ -633,25 +811,27 @@ const styles = StyleSheet.create({
   },
   modalCancelBtn: {
     flex: 1,
-    padding: 14,
-    borderRadius: 8,
+    padding: 13,
+    borderRadius: 4,
     borderWidth: 1,
-    borderColor: '#ddd',
+    borderColor: '#e0e0e0',
     alignItems: 'center',
   },
   modalCancelText: {
-    color: '#666',
-    fontWeight: 'bold',
+    color: '#aaa',
+    fontWeight: '500',
+    fontSize: 14,
   },
   modalSaveBtn: {
     flex: 1,
-    padding: 14,
-    borderRadius: 8,
-    backgroundColor: '#1b5e20',
+    padding: 13,
+    borderRadius: 4,
+    backgroundColor: '#2d9e5f',
     alignItems: 'center',
   },
   modalSaveText: {
     color: 'white',
-    fontWeight: 'bold',
+    fontWeight: '600',
+    fontSize: 14,
   },
 });

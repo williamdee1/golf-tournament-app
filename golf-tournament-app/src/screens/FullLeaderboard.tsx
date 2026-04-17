@@ -104,6 +104,9 @@ export default function FullLeaderboard({ navigation, route, user }: Props) {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
+        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+          <Text style={styles.backButtonText}>← Back</Text>
+        </TouchableOpacity>
         <Text style={styles.title}>{tournamentName}</Text>
         <Text style={styles.subtitle}>Full Leaderboard</Text>
       </View>
@@ -218,24 +221,33 @@ export default function FullLeaderboard({ navigation, route, user }: Props) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f2f5f2',
+    backgroundColor: '#f0f3f0',
   },
   header: {
-    backgroundColor: '#1b5e20',
-    padding: 20,
-    paddingTop: 28,
+    backgroundColor: '#062612',
+    paddingHorizontal: 20,
+    paddingTop: 52,
     paddingBottom: 24,
   },
+  backButton: {
+    marginBottom: 12,
+  },
+  backButtonText: {
+    color: 'rgba(255,255,255,0.5)',
+    fontSize: 13,
+    fontWeight: '400',
+  },
   title: {
-    fontSize: 20,
-    fontWeight: 'bold',
+    fontSize: 24,
+    fontWeight: '300',
     color: 'white',
     marginBottom: 4,
+    letterSpacing: -0.3,
   },
   subtitle: {
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.75)',
-    letterSpacing: 1,
+    fontSize: 10,
+    color: 'rgba(255,255,255,0.4)',
+    letterSpacing: 2.5,
     fontWeight: '600',
   },
   scroll: {
@@ -245,25 +257,22 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   sectionLabel: {
-    fontSize: 12,
-    fontWeight: 'bold',
-    color: '#1b5e20',
-    letterSpacing: 1,
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#2d9e5f',
+    letterSpacing: 2,
     marginBottom: 8,
   },
   card: {
     backgroundColor: 'white',
-    borderRadius: 14,
+    borderRadius: 6,
     overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 3,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.06)',
     marginBottom: 4,
   },
   headerRow: {
-    backgroundColor: '#1b5e20',
+    backgroundColor: '#062612',
     paddingVertical: 10,
     paddingHorizontal: 14,
   },
@@ -276,45 +285,46 @@ const styles = StyleSheet.create({
     borderBottomColor: '#f0f0f0',
   },
   rowAlt: {
-    backgroundColor: '#f9fdf9',
+    backgroundColor: '#f7f9f7',
   },
   headerText: {
-    fontSize: 12,
-    fontWeight: 'bold',
-    color: 'rgba(255,255,255,0.9)',
+    fontSize: 11,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.7)',
+    letterSpacing: 0.5,
   },
   rankText: {
-    fontSize: 14,
-    color: '#888',
-    fontWeight: '600',
+    fontSize: 13,
+    color: '#bbb',
+    fontWeight: '500',
   },
   playerText: {
-    fontSize: 15,
-    fontWeight: '600',
+    fontSize: 14,
+    fontWeight: '500',
     color: '#1a2e1b',
   },
   pointsText: {
-    fontSize: 15,
-    fontWeight: 'bold',
-    color: '#7b1fa2',
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#064E3B',
   },
   birdieText: {
-    fontSize: 15,
-    fontWeight: 'bold',
+    fontSize: 14,
+    fontWeight: '600',
     color: '#e64a19',
   },
   toParText: {
-    fontSize: 15,
-    fontWeight: 'bold',
-    color: '#1b5e20',
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#2d9e5f',
   },
   coursePointText: {
-    fontSize: 15,
-    color: '#444',
+    fontSize: 14,
+    color: '#555',
   },
   grossScoreText: {
-    fontSize: 15,
-    color: '#444',
+    fontSize: 14,
+    color: '#555',
     paddingVertical: 12,
   },
   clickableText: {
@@ -328,7 +338,7 @@ const styles = StyleSheet.create({
     padding: 40,
   },
   emptyText: {
-    fontSize: 16,
-    color: '#888',
+    fontSize: 15,
+    color: '#aaa',
   },
 });

@@ -685,6 +685,74 @@ router.delete('/:id/scorecards/:scorecardId', authRouter.authenticateUser, (req,
   }
 });
 
+// Submit a group scorecard (mark as completed)
+router.patch('/:id/scorecards/:scorecardId/submit', authRouter.authenticateUser, (req, res) => {
+  try {
+    const { id, scorecardId } = req.params;
+    const user = req.user;
+
+    const tournamentIndex = tournaments.findIndex(t => t.id === id);
+    if (tournamentIndex === -1) return res.status(404).json({ error: 'Tournament not found' });
+
+    const tournament = tournaments[tournamentIndex];
+    const isPlayer = tournament.players.some(p => p.id === user.id);
+    if (!isPlayer) return res.status(403).json({ error: 'You are not part of this tournament' });
+
+    const scorecards = tournament.scorecards || [];
+    const scorecardIndex = scorecards.findIndex(s => s.id === scorecardId);
+    if (scorecardIndex === -1) return res.status(404).json({ error: 'Scorecard not found' });
+
+    const scorecard = scorecards[scorecardIndex];
+    if (scorecard.createdBy !== user.id && tournament.createdBy !== user.id) {
+      return res.status(403).json({ error: 'Only the scorecard creator can submit it' });
+    }
+
+    tournaments[tournamentIndex].scorecards[scorecardIndex].submitted = true;
+    saveTournaments();
+
+    console.log(`✅ Scorecard ${scorecardId} submitted in tournament ${id} by ${user.username}`);
+    res.json({ success: true, tournament: tournaments[tournamentIndex] });
+
+  } catch (error) {
+    console.error('❌ Submit scorecard error:', error);
+    res.status(500).json({ error: 'Failed to submit scorecard', message: error.message });
+  }
+});
+
+// Unsubmit a group scorecard (re-open for editing)
+router.patch('/:id/scorecards/:scorecardId/unsubmit', authRouter.authenticateUser, (req, res) => {
+  try {
+    const { id, scorecardId } = req.params;
+    const user = req.user;
+
+    const tournamentIndex = tournaments.findIndex(t => t.id === id);
+    if (tournamentIndex === -1) return res.status(404).json({ error: 'Tournament not found' });
+
+    const tournament = tournaments[tournamentIndex];
+    const isPlayer = tournament.players.some(p => p.id === user.id);
+    if (!isPlayer) return res.status(403).json({ error: 'You are not part of this tournament' });
+
+    const scorecards = tournament.scorecards || [];
+    const scorecardIndex = scorecards.findIndex(s => s.id === scorecardId);
+    if (scorecardIndex === -1) return res.status(404).json({ error: 'Scorecard not found' });
+
+    const scorecard = scorecards[scorecardIndex];
+    if (scorecard.createdBy !== user.id && tournament.createdBy !== user.id) {
+      return res.status(403).json({ error: 'Only the scorecard creator can edit it' });
+    }
+
+    tournaments[tournamentIndex].scorecards[scorecardIndex].submitted = false;
+    saveTournaments();
+
+    console.log(`✅ Scorecard ${scorecardId} re-opened in tournament ${id} by ${user.username}`);
+    res.json({ success: true, tournament: tournaments[tournamentIndex] });
+
+  } catch (error) {
+    console.error('❌ Unsubmit scorecard error:', error);
+    res.status(500).json({ error: 'Failed to re-open scorecard', message: error.message });
+  }
+});
+
 // Save score for a hole (any tournament participant, optionally for another player)
 router.put('/:id/scores/:courseId/:holeNumber', authRouter.authenticateUser, (req, res) => {
   try {

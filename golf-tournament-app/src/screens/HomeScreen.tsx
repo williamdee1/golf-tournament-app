@@ -121,10 +121,10 @@ export default function HomeScreen({ navigation, user, sessionToken, onLogout }:
           </View>
           <View style={styles.cardChips}>
             <View style={styles.chip}>
-              <Text style={styles.chipText}>⛳ {tournament.coursesCount} course{tournament.coursesCount !== 1 ? 's' : ''}</Text>
+              <Text style={styles.chipText}>{tournament.coursesCount} course{tournament.coursesCount !== 1 ? 's' : ''}</Text>
             </View>
             <View style={styles.chip}>
-              <Text style={styles.chipText}>👥 {tournament.playersCount} player{tournament.playersCount !== 1 ? 's' : ''}</Text>
+              <Text style={styles.chipText}>{tournament.playersCount} player{tournament.playersCount !== 1 ? 's' : ''}</Text>
             </View>
           </View>
           <Text style={styles.cardMeta}>
@@ -139,7 +139,7 @@ export default function HomeScreen({ navigation, user, sessionToken, onLogout }:
           activeOpacity={0.7}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
-          <Text style={styles.deleteButtonText}>🗑️</Text>
+          <Text style={styles.deleteButtonText}>✕</Text>
         </TouchableOpacity>
       )}
     </View>
@@ -150,7 +150,7 @@ export default function HomeScreen({ navigation, user, sessionToken, onLogout }:
       {/* Header */}
       <View style={styles.header}>
         <View>
-          <Text style={styles.appTitle}>⛳ Golf Tournament</Text>
+          <Text style={styles.appTitle}>Caddie</Text>
           <Text style={styles.welcomeText}>Welcome back, {user?.username}</Text>
         </View>
         <TouchableOpacity style={styles.logoutButton} onPress={onLogout}>
@@ -161,19 +161,19 @@ export default function HomeScreen({ navigation, user, sessionToken, onLogout }:
       {/* Action Buttons */}
       <View style={styles.actionRow}>
         <TouchableOpacity style={styles.primaryButton} onPress={() => navigation.navigate('CreateTournament')} activeOpacity={0.85}>
-          <Text style={styles.primaryButtonIcon}>＋</Text>
-          <Text style={styles.primaryButtonText}>New Tournament</Text>
+          <Text style={styles.primaryButtonText}>+ New Tournament</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.outlineButton} onPress={() => setShowJoinModal(true)} activeOpacity={0.85}>
-          <Text style={styles.outlineButtonIcon}>🔗</Text>
           <Text style={styles.outlineButtonText}>Join Tournament</Text>
         </TouchableOpacity>
       </View>
 
       {/* My Tournaments */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>My Tournaments</Text>
-        <Text style={styles.sectionCount}>{createdTournaments.length} tournament{createdTournaments.length !== 1 ? 's' : ''}</Text>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>MY TOURNAMENTS</Text>
+          <Text style={styles.sectionCount}>{createdTournaments.length}</Text>
+        </View>
 
         {isLoadingTournaments ? (
           <View style={styles.emptyState}>
@@ -181,7 +181,6 @@ export default function HomeScreen({ navigation, user, sessionToken, onLogout }:
           </View>
         ) : createdTournaments.length === 0 ? (
           <View style={styles.emptyState}>
-            <Text style={styles.emptyStateEmoji}>🏌️</Text>
             <Text style={styles.emptyStateText}>No tournaments yet</Text>
             <Text style={styles.emptyStateSubtext}>Create one to get started</Text>
           </View>
@@ -193,15 +192,13 @@ export default function HomeScreen({ navigation, user, sessionToken, onLogout }:
       {/* Joined Tournaments */}
       {joinedTournaments.length > 0 && (
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Joined Tournaments</Text>
-          <Text style={styles.sectionCount}>{joinedTournaments.length} tournament{joinedTournaments.length !== 1 ? 's' : ''}</Text>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>JOINED TOURNAMENTS</Text>
+            <Text style={styles.sectionCount}>{joinedTournaments.length}</Text>
+          </View>
           {joinedTournaments.map(t => <TournamentCard key={t.id} tournament={t} />)}
         </View>
       )}
-
-      <TouchableOpacity style={styles.testButton} onPress={() => navigation.navigate('ApiTest')}>
-        <Text style={styles.testButtonText}>Test API</Text>
-      </TouchableOpacity>
 
       {/* Join Modal */}
       <Modal visible={showJoinModal} animationType="slide" transparent onRequestClose={() => setShowJoinModal(false)}>
@@ -212,6 +209,7 @@ export default function HomeScreen({ navigation, user, sessionToken, onLogout }:
             <TextInput
               style={styles.modalInput}
               placeholder="e.g. ABC123"
+              placeholderTextColor="#aaa"
               value={tournamentId}
               onChangeText={setTournamentId}
               autoCapitalize="characters"
@@ -239,7 +237,7 @@ export default function HomeScreen({ navigation, user, sessionToken, onLogout }:
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f2f5f2',
+    backgroundColor: '#f0f3f0',
   },
 
   // Header
@@ -250,122 +248,105 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingTop: 52,
     paddingBottom: 28,
-    backgroundColor: '#1b5e20',
+    backgroundColor: '#062612',
   },
   appTitle: {
-    fontSize: 24,
-    fontWeight: '800',
+    fontSize: 26,
+    fontWeight: '300',
     color: '#ffffff',
-    letterSpacing: 0.3,
+    letterSpacing: 0.5,
   },
   welcomeText: {
-    fontSize: 14,
-    color: '#a5d6a7',
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.5)',
     marginTop: 3,
-    fontWeight: '500',
+    fontWeight: '400',
+    letterSpacing: 0.2,
   },
   logoutButton: {
-    borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.45)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.25)',
     paddingHorizontal: 14,
     paddingVertical: 7,
-    borderRadius: 20,
+    borderRadius: 4,
   },
   logoutButtonText: {
-    color: '#ffffff',
-    fontSize: 13,
-    fontWeight: '600',
+    color: 'rgba(255,255,255,0.75)',
+    fontSize: 12,
+    fontWeight: '500',
+    letterSpacing: 0.3,
   },
 
   // Action buttons
   actionRow: {
     flexDirection: 'row',
-    gap: 12,
+    gap: 10,
     marginHorizontal: 16,
     marginTop: 20,
     marginBottom: 8,
   },
   primaryButton: {
     flex: 1,
-    backgroundColor: '#2e7d32',
-    paddingVertical: 16,
-    borderRadius: 14,
+    backgroundColor: '#2d9e5f',
+    paddingVertical: 14,
+    borderRadius: 4,
     alignItems: 'center',
-    shadowColor: '#2e7d32',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 4,
-  },
-  primaryButtonIcon: {
-    color: '#a5d6a7',
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 2,
   },
   primaryButtonText: {
     color: '#ffffff',
-    fontSize: 14,
-    fontWeight: '700',
-    letterSpacing: 0.2,
+    fontSize: 13,
+    fontWeight: '600',
+    letterSpacing: 0.5,
   },
   outlineButton: {
     flex: 1,
-    backgroundColor: '#ffffff',
-    paddingVertical: 16,
-    borderRadius: 14,
+    backgroundColor: 'transparent',
+    paddingVertical: 14,
+    borderRadius: 4,
     alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#2e7d32',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  outlineButtonIcon: {
-    fontSize: 16,
-    marginBottom: 2,
+    borderWidth: 1,
+    borderColor: '#2d9e5f',
   },
   outlineButtonText: {
-    color: '#2e7d32',
-    fontSize: 14,
-    fontWeight: '700',
-    letterSpacing: 0.2,
+    color: '#2d9e5f',
+    fontSize: 13,
+    fontWeight: '600',
+    letterSpacing: 0.5,
   },
 
   // Sections
   section: {
     marginHorizontal: 16,
-    marginTop: 20,
+    marginTop: 24,
     marginBottom: 4,
   },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#1b5e20',
-    letterSpacing: 0.2,
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#2d9e5f',
+    letterSpacing: 2,
   },
   sectionCount: {
-    fontSize: 12,
-    color: '#888',
-    marginTop: 2,
-    marginBottom: 12,
+    fontSize: 11,
+    color: '#aaa',
     fontWeight: '500',
   },
 
   // Tournament card
   card: {
     backgroundColor: '#ffffff',
-    borderRadius: 14,
-    marginBottom: 10,
+    borderRadius: 6,
+    marginBottom: 8,
     flexDirection: 'row',
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.07,
-    shadowRadius: 6,
-    elevation: 2,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.06)',
     overflow: 'hidden',
   },
   cardContent: {
@@ -373,8 +354,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
   },
   cardAccent: {
-    width: 5,
-    backgroundColor: '#2e7d32',
+    width: 3,
+    backgroundColor: '#2d9e5f',
     alignSelf: 'stretch',
   },
   cardBody: {
@@ -388,25 +369,23 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   cardTitle: {
-    fontSize: 16,
-    fontWeight: '700',
+    fontSize: 15,
+    fontWeight: '500',
     color: '#1a1a1a',
     flex: 1,
     marginRight: 8,
   },
   statusBadge: {
-    backgroundColor: '#e8f5e9',
+    backgroundColor: 'rgba(45,158,95,0.1)',
     paddingHorizontal: 8,
     paddingVertical: 3,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#c8e6c9',
+    borderRadius: 3,
   },
   statusText: {
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '700',
-    color: '#2e7d32',
-    letterSpacing: 0.5,
+    color: '#2d9e5f',
+    letterSpacing: 1,
   },
   cardChips: {
     flexDirection: 'row',
@@ -417,17 +396,18 @@ const styles = StyleSheet.create({
     backgroundColor: '#f0f4f0',
     paddingHorizontal: 8,
     paddingVertical: 3,
-    borderRadius: 8,
+    borderRadius: 3,
   },
   chipText: {
-    fontSize: 12,
-    color: '#444',
+    fontSize: 11,
+    color: '#666',
     fontWeight: '500',
   },
   cardMeta: {
-    fontSize: 11,
-    color: '#aaa',
+    fontSize: 10,
+    color: '#bbb',
     fontWeight: '400',
+    letterSpacing: 0.2,
   },
   deleteButton: {
     paddingHorizontal: 14,
@@ -437,7 +417,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   deleteButtonText: {
-    fontSize: 18,
+    fontSize: 13,
+    color: '#ccc',
   },
 
   // Empty state
@@ -445,41 +426,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 32,
     backgroundColor: '#ffffff',
-    borderRadius: 14,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
-    elevation: 1,
-  },
-  emptyStateEmoji: {
-    fontSize: 36,
-    marginBottom: 8,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.06)',
   },
   emptyStateText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#555',
+    fontSize: 15,
+    fontWeight: '400',
+    color: '#888',
     marginBottom: 4,
   },
   emptyStateSubtext: {
-    fontSize: 13,
-    color: '#aaa',
-  },
-
-  // Test button
-  testButton: {
-    margin: 16,
-    marginTop: 8,
-    backgroundColor: '#e8eae8',
-    paddingVertical: 10,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  testButtonText: {
-    color: '#888',
     fontSize: 12,
-    fontWeight: '500',
+    color: '#bbb',
   },
 
   // Modal
@@ -493,36 +452,37 @@ const styles = StyleSheet.create({
     backgroundColor: '#ffffff',
     margin: 20,
     padding: 28,
-    borderRadius: 16,
+    borderRadius: 6,
     width: '90%',
     maxWidth: 400,
   },
   modalTitle: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: '#1b5e20',
+    fontSize: 18,
+    fontWeight: '400',
+    color: '#062612',
     marginBottom: 6,
     textAlign: 'center',
+    letterSpacing: 0.3,
   },
   modalSubtitle: {
-    fontSize: 14,
-    color: '#888',
+    fontSize: 13,
+    color: '#aaa',
     marginBottom: 20,
     textAlign: 'center',
   },
   modalInput: {
-    borderWidth: 1.5,
-    borderColor: '#ddd',
-    borderRadius: 10,
-    padding: 15,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    borderRadius: 6,
+    padding: 14,
     fontSize: 20,
     marginBottom: 24,
-    backgroundColor: '#f9f9f9',
+    backgroundColor: '#fafafa',
     textAlign: 'center',
     textTransform: 'uppercase',
-    fontWeight: '700',
+    fontWeight: '600',
     letterSpacing: 4,
-    color: '#1b5e20',
+    color: '#062612',
   },
   modalActions: {
     flexDirection: 'row',
@@ -531,30 +491,30 @@ const styles = StyleSheet.create({
   },
   modalCancelButton: {
     flex: 1,
-    padding: 14,
+    padding: 13,
     alignItems: 'center',
-    borderWidth: 1.5,
-    borderColor: '#ddd',
-    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    borderRadius: 4,
   },
   modalCancelText: {
-    color: '#666',
-    fontSize: 15,
-    fontWeight: '600',
+    color: '#999',
+    fontSize: 14,
+    fontWeight: '500',
   },
   modalJoinButton: {
     flex: 1,
-    backgroundColor: '#2e7d32',
-    padding: 14,
-    borderRadius: 10,
+    backgroundColor: '#2d9e5f',
+    padding: 13,
+    borderRadius: 4,
     alignItems: 'center',
   },
   modalJoinText: {
     color: '#ffffff',
-    fontSize: 15,
-    fontWeight: '700',
+    fontSize: 14,
+    fontWeight: '600',
   },
   disabledButton: {
-    backgroundColor: '#ccc',
+    backgroundColor: 'rgba(45,158,95,0.25)',
   },
 });
