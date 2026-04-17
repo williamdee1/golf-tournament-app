@@ -54,8 +54,10 @@ function MinimalInput({ placeholder, value, onChangeText, secureTextEntry, keybo
             inputStyles.input,
             Platform.OS === 'web' ? ({
               outlineStyle: 'none',
-              WebkitBoxShadow: '0 0 0 30px transparent inset',
+              // Override browser autofill blue — must be a solid colour, not transparent
+              WebkitBoxShadow: '0 0 0 30px #1e3d28 inset',
               WebkitTextFillColor: '#ffffff',
+              caretColor: '#ffffff',
             } as any) : {},
           ]}
           value={value}
@@ -89,7 +91,7 @@ const inputStyles = StyleSheet.create({
   inputBox: {
     borderWidth: 1,
     borderRadius: 8,
-    backgroundColor: '#ffffff1c',
+    backgroundColor: '#1e3d28',
     paddingHorizontal: 14,
     paddingVertical: 2,
   },
@@ -199,10 +201,10 @@ export default function LoginScreen({ navigation, onLogin }: Props) {
           style={[
             styles.card,
             cardStyle,
-            Platform.OS === 'web' ? {
-              backdropFilter: 'blur(10px)' as any,
-              WebkitBackdropFilter: 'blur(10px)' as any,
-            } : {},
+            (Platform.OS === 'web' ? {
+              backdropFilter: 'blur(10px)',
+              WebkitBackdropFilter: 'blur(10px)',
+            } : {}) as any,
           ]}
         >
           <MinimalInput
