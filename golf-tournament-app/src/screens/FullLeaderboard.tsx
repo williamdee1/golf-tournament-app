@@ -66,14 +66,19 @@ export default function FullLeaderboard({ navigation, route, user }: Props) {
     const top3Avg = top3.length > 0 ? top3.reduce((s: number, v: number) => s + v, 0) / top3.length : 0;
     const totalPoints = filledPoints.reduce((s: number, v: number) => s + v, 0);
 
-    const totalBirdies = courses.reduce((birdieSum: number, course: any) => {
+    let totalBirdies = 0;
+    let hasEagle = false;
+    courses.forEach((course: any) => {
       const courseScores = tournament.scores?.[player.id]?.[course.id];
-      if (!courseScores) return birdieSum;
-      return birdieSum + course.holes.reduce((b: number, hole: any, holeIndex: number) => {
+      if (!courseScores) return;
+      course.holes.forEach((hole: any, holeIndex: number) => {
         const holeScore = courseScores[hole.number || (holeIndex + 1)];
-        return (typeof holeScore === 'number' && holeScore < hole.par) ? b + 1 : b;
-      }, 0);
-    }, 0);
+        if (typeof holeScore === 'number' && holeScore < hole.par) {
+          totalBirdies += 1;
+          if (holeScore <= hole.par - 2) hasEagle = true;
+        }
+      });
+    });
 
     let totalScore = 0;
     let totalPar = 0;
@@ -96,7 +101,7 @@ export default function FullLeaderboard({ navigation, route, user }: Props) {
       scoreToPar > 0 ? `+${scoreToPar}` :
       `${scoreToPar}`;
 
-    return { player, coursePoints, perCourseScores, top3Avg, totalPoints, totalBirdies, scoreToParText };
+    return { player, coursePoints, perCourseScores, top3Avg, totalPoints, totalBirdies, hasEagle, scoreToParText };
   });
 
   playerData.sort((a: any, b: any) => b.top3Avg - a.top3Avg);
@@ -123,14 +128,14 @@ export default function FullLeaderboard({ navigation, route, user }: Props) {
               <Text style={[styles.headerText, { width: 60, textAlign: 'center' }]}>Birdies</Text>
               <Text style={[styles.headerText, { width: 60, textAlign: 'center' }]}>To Par</Text>
             </View>
-            {playerData.map(({ player, top3Avg, totalBirdies, scoreToParText }: any, index: number) => (
+            {playerData.map(({ player, top3Avg, totalBirdies, hasEagle, scoreToParText }: any, index: number) => (
               <View key={player.id} style={[styles.row, index % 2 === 1 && styles.rowAlt]}>
                 <Text style={[styles.rankText, { width: 28 }]}>{index + 1}</Text>
                 <Text style={[styles.playerText, { flex: 1 }]}>{player.username}</Text>
                 <Text style={[styles.pointsText, { width: 72, textAlign: 'center' }]}>
                   {top3Avg > 0 ? top3Avg.toFixed(1) : '-'}
                 </Text>
-                <Text style={[styles.birdieText, { width: 60, textAlign: 'center' }]}>{totalBirdies}</Text>
+                <Text style={[styles.birdieText, { width: 60, textAlign: 'center' }]}>{totalBirdies}{hasEagle ? '*' : ''}</Text>
                 <Text style={[styles.toParText, { width: 60, textAlign: 'center' }]}>{scoreToParText}</Text>
               </View>
             ))}

@@ -790,28 +790,35 @@ export default function TournamentDetail({ navigation, route, user, sessionToken
                 const top3 = [...coursePoints].sort((a: number, b: number) => b - a).slice(0, 3);
                 const top3Avg = top3.length > 0 ? top3.reduce((s: number, v: number) => s + v, 0) / top3.length : 0;
 
-                const totalBirdies = courses.reduce((birdieSum: number, course: Course) => {
+                let totalBirdies = 0;
+                let hasEagle = false;
+                courses.forEach((course: Course) => {
                   const courseScores = tournament.scores?.[player.id]?.[course.id];
-                  if (!courseScores) return birdieSum;
-                  return birdieSum + course.holes.reduce((b: number, hole: any, holeIndex: number) => {
+                  if (!courseScores) return;
+                  course.holes.forEach((hole: any, holeIndex: number) => {
                     const holeScore = courseScores[hole.number || (holeIndex + 1)];
-                    return (typeof holeScore === 'number' && holeScore < hole.par) ? b + 1 : b;
-                  }, 0);
-                }, 0);
+                    if (typeof holeScore === 'number' && holeScore < hole.par) {
+                      totalBirdies += 1;
+                      if (holeScore <= hole.par - 2) hasEagle = true;
+                    }
+                  });
+                });
 
-                return { player, top3Avg, totalBirdies };
+                return { player, top3Avg, totalBirdies, hasEagle };
               });
 
               playerData.sort((a: any, b: any) => b.top3Avg - a.top3Avg);
 
-              return playerData.map(({ player, top3Avg, totalBirdies }: any, index: number) => (
+              return playerData.map(({ player, top3Avg, totalBirdies, hasEagle }: any, index: number) => (
                 <View key={player.id} style={[styles.simpleLeaderRow, index % 2 === 1 && styles.simpleLeaderRowAlt]}>
                   <Text style={[styles.simpleLeaderRank, { flex: 1 }]}>{index + 1}</Text>
                   <Text style={[styles.simpleLeaderPlayer, { flex: 3 }]}>{player.username}</Text>
                   <Text style={[styles.simpleLeaderPoints, { flex: 2, textAlign: 'center' }]}>
                     {top3Avg > 0 ? top3Avg.toFixed(1) : '-'}
                   </Text>
-                  <Text style={[styles.simpleLeaderBirdie, { flex: 1, textAlign: 'center' }]}>{totalBirdies}</Text>
+                  <Text style={[styles.simpleLeaderBirdie, { flex: 1, textAlign: 'center' }]}>
+                    {totalBirdies}{hasEagle ? '*' : ''}
+                  </Text>
                 </View>
               ));
             })() : (

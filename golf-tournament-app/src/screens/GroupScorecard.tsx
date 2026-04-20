@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, Modal, Alert } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, Modal, Alert, Platform } from 'react-native';
 import { API_ENDPOINTS } from '../config/api';
 
 type Props = {
@@ -14,11 +14,14 @@ export default function GroupScorecard({ navigation, route, user, sessionToken }
 
   const [currentHoleIndex, setCurrentHoleIndex] = useState(0);
   const [scores, setScores] = useState<{ [playerId: string]: { [hole: number]: number } }>({});
+  const [pickups, setPickups] = useState<{ [playerId: string]: { [hole: number]: boolean } }>({});
   const [handicaps, setHandicaps] = useState<{ [playerId: string]: number }>({});
   const [editingHandicap, setEditingHandicap] = useState<string | null>(null);
   const [handicapText, setHandicapText] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(scorecard.submitted || false);
+  const longPressTimers = useRef<{ [playerId: string]: ReturnType<typeof setTimeout> }>({});
+  const longPressFired = useRef<{ [playerId: string]: boolean }>({});
 
   const holes = course.holes || [];
   const currentHole = holes[currentHoleIndex];
@@ -45,10 +48,58 @@ export default function GroupScorecard({ navigation, route, user, sessionToken }
         }
         setScores(newScores);
         setHandicaps(newHandicaps);
+
+        // Jump to the next unscored hole on load
+        const allScores = newScores;
+        const firstUnscored = holes.findIndex((_: any, i: number) => {
+          const hNum = holes[i].number || (i + 1);
+          return scorecard.playerIds.some((pid: string) =>
+            allScores[pid]?.[hNum] === undefined || allScores[pid]?.[hNum] === 0
+          );
+        });
+        if (firstUnscored === -1) {
+          setCurrentHoleIndex(holes.length - 1); // all scored — show last hole
+        } else if (firstUnscored > 0) {
+          setCurrentHoleIndex(firstUnscored);
+        }
       }
     } catch (error) {
       console.error('Error loading data:', error);
     }
+  };
+
+  // "Pick up" — minimum score that scores 0 Stableford points
+  const getPickupScore = (par: number, playerId: string, holeSI: number): number => {
+    const h = handicaps[playerId] ?? 0;
+    const strokes = Math.floor(h / 18) + (holeSI <= (h % 18) ? 1 : 0);
+    return par + strokes + 2; // double bogey net = 0 pts
+  };
+
+  const handlePlusPress = (playerId: string, currentScore: number | undefined, holePar: number, holeNumber: number) => {
+    if (longPressFired.current[playerId]) {
+      longPressFired.current[playerId] = false;
+      return;
+    }
+    // First press with no score → go to par, not bogey
+    const next = currentScore === undefined ? holePar : Math.min(20, currentScore + 1);
+    saveScore(playerId, holeNumber, next);
+  };
+
+  const handlePlusPressIn = (playerId: string, holePar: number, holeSI: number, holeNumber: number) => {
+    longPressFired.current[playerId] = false;
+    longPressTimers.current[playerId] = setTimeout(() => {
+      longPressFired.current[playerId] = true;
+      const pickup = getPickupScore(holePar, playerId, holeSI);
+      setPickups(prev => ({
+        ...prev,
+        [playerId]: { ...(prev[playerId] || {}), [holeNumber]: true }
+      }));
+      saveScore(playerId, holeNumber, pickup);
+    }, 600);
+  };
+
+  const handlePlusPressOut = (playerId: string) => {
+    clearTimeout(longPressTimers.current[playerId]);
   };
 
   const saveScore = async (playerId: string, holeNumber: number, score: number) => {
@@ -80,40 +131,57 @@ export default function GroupScorecard({ navigation, route, user, sessionToken }
     }
   };
 
-  const handleSubmitScorecard = async () => {
-    const confirmed = window.confirm('Submit this scorecard? Scores will be locked but you can re-open to edit if needed.');
-    if (!confirmed) return;
-    setIsSubmitting(true);
-    try {
-      const response = await fetch(API_ENDPOINTS.submitScorecard(tournamentId, scorecard.id), {
-        method: 'PATCH',
-        headers: { 'Authorization': `Bearer ${sessionToken}` },
-      });
-      const data = await response.json();
-      if (data.success) setSubmitted(true);
-    } catch (error) {
-      console.error('Error submitting scorecard:', error);
-    } finally {
-      setIsSubmitting(false);
+  const confirmAction = (message: string, onConfirm: () => void) => {
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      if (window.confirm(message)) onConfirm();
+    } else {
+      Alert.alert('Confirm', message, [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Confirm', onPress: onConfirm },
+      ]);
     }
   };
 
-  const handleUnsubmit = async () => {
-    const confirmed = window.confirm('Re-open this scorecard so scores can be edited?');
-    if (!confirmed) return;
-    setIsSubmitting(true);
-    try {
-      const response = await fetch(API_ENDPOINTS.unsubmitScorecard(tournamentId, scorecard.id), {
-        method: 'PATCH',
-        headers: { 'Authorization': `Bearer ${sessionToken}` },
-      });
-      const data = await response.json();
-      if (data.success) setSubmitted(false);
-    } catch (error) {
-      console.error('Error re-opening scorecard:', error);
-    } finally {
-      setIsSubmitting(false);
-    }
+  const handleSubmitScorecard = () => {
+    confirmAction(
+      'Submit this scorecard? Scores will be locked but you can re-open to edit if needed.',
+      async () => {
+        setIsSubmitting(true);
+        try {
+          const response = await fetch(API_ENDPOINTS.submitScorecard(tournamentId, scorecard.id), {
+            method: 'PATCH',
+            headers: { 'Authorization': `Bearer ${sessionToken}` },
+          });
+          const data = await response.json();
+          if (data.success) setSubmitted(true);
+        } catch (error) {
+          console.error('Error submitting scorecard:', error);
+        } finally {
+          setIsSubmitting(false);
+        }
+      }
+    );
+  };
+
+  const handleUnsubmit = () => {
+    confirmAction(
+      'Re-open this scorecard so scores can be edited?',
+      async () => {
+        setIsSubmitting(true);
+        try {
+          const response = await fetch(API_ENDPOINTS.unsubmitScorecard(tournamentId, scorecard.id), {
+            method: 'PATCH',
+            headers: { 'Authorization': `Bearer ${sessionToken}` },
+          });
+          const data = await response.json();
+          if (data.success) setSubmitted(false);
+        } catch (error) {
+          console.error('Error re-opening scorecard:', error);
+        } finally {
+          setIsSubmitting(false);
+        }
+      }
+    );
   };
 
   const getStrokesReceived = (playerId: string, holeSI: number): number => {
@@ -151,6 +219,15 @@ export default function GroupScorecard({ navigation, route, user, sessionToken }
     return Object.values(scores[playerId] || {}).filter(s => typeof s === 'number' && s > 0).length;
   };
 
+  const getTotalStableford = (playerId: string): number => {
+    return holes.reduce((total: number, hole: any) => {
+      const hNum = hole.number || (holes.indexOf(hole) + 1);
+      const s = scores[playerId]?.[hNum];
+      if (typeof s !== 'number') return total;
+      return total + calculateStableford(s, hole.par, playerId, hole.handicap || 0);
+    }, 0);
+  };
+
   if (!currentHole) {
     return (
       <View style={styles.container}>
@@ -170,11 +247,25 @@ export default function GroupScorecard({ navigation, route, user, sessionToken }
 
         {/* Header */}
         <View style={styles.header}>
-          <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+          <TouchableOpacity onPress={() => navigation.goBack()}>
             <Text style={styles.backButtonText}>← Back</Text>
           </TouchableOpacity>
-          <Text style={styles.courseName}>{course.name}</Text>
-          <Text style={styles.tournamentName}>{tournamentName}</Text>
+          <View style={styles.headerBottomRow}>
+            <View style={styles.courseNameBlock}>
+              <Text style={styles.courseName}>{course.name}</Text>
+              <Text style={styles.tournamentName}>{tournamentName}</Text>
+            </View>
+            <TouchableOpacity
+              style={styles.leaderboardBtn}
+              onPress={() => navigation.navigate('RoundLeaderboard', { tournamentId, course, tournamentName })}
+              // @ts-ignore — web-only hover handled via onMouseEnter/Leave
+              onMouseEnter={(e: any) => { e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.1)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,1)'; }}
+              onMouseLeave={(e: any) => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.3)'; }}
+            >
+              <Text style={styles.leaderboardBtnText}>ROUND</Text>
+              <Text style={styles.leaderboardBtnText}>LEADERBOARD</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Hole Navigation */}
@@ -268,6 +359,7 @@ export default function GroupScorecard({ navigation, route, user, sessionToken }
             const stablefordPts = currentScore !== undefined ? calculateStableford(currentScore, holePar, playerId, holeSI) : null;
             const totalScore = getTotalScore(playerId);
             const holesCompleted = getHolesCompleted(playerId);
+            const totalStableford = getTotalStableford(playerId);
 
             return (
               <View key={playerId} style={styles.playerCard}>
@@ -290,7 +382,7 @@ export default function GroupScorecard({ navigation, route, user, sessionToken }
                         {handicap !== undefined ? `HCP ${handicap}` : 'Set HCP'}
                       </Text>
                     </TouchableOpacity>
-                    {totalScore > 0 && (
+                    {holesCompleted > 0 && (
                       <Text style={styles.totalScore}>
                         {holesCompleted}/{holes.length} · {totalScore}
                       </Text>
@@ -304,7 +396,7 @@ export default function GroupScorecard({ navigation, route, user, sessionToken }
                       {currentScore !== undefined ? (
                         <>
                           <Text style={[styles.scoreValue, scoreInfo && { color: scoreInfo.color }]}>
-                            {currentScore}
+                            {currentScore}{pickups[playerId]?.[holeNumber] ? '*' : ''}
                           </Text>
                           <Text style={[styles.scoreLabel, { color: scoreInfo?.color || '#666' }]}>
                             {scoreInfo?.label}
@@ -322,7 +414,16 @@ export default function GroupScorecard({ navigation, route, user, sessionToken }
                   <View style={styles.scoreRow}>
                     <TouchableOpacity
                       style={styles.scoreBtn}
-                      onPress={() => saveScore(playerId, holeNumber, Math.max(1, (currentScore ?? holePar) - 1))}
+                      onPress={() => {
+                        setPickups(prev => {
+                          const updated = { ...prev };
+                          if (updated[playerId]) {
+                            updated[playerId] = { ...updated[playerId], [holeNumber]: false };
+                          }
+                          return updated;
+                        });
+                        saveScore(playerId, holeNumber, Math.max(1, (currentScore ?? holePar) - 1));
+                      }}
                     >
                       <Text style={styles.scoreBtnText}>−</Text>
                     </TouchableOpacity>
@@ -331,7 +432,7 @@ export default function GroupScorecard({ navigation, route, user, sessionToken }
                       {currentScore !== undefined ? (
                         <>
                           <Text style={[styles.scoreValue, scoreInfo && { color: scoreInfo.color }]}>
-                            {currentScore}
+                            {currentScore}{pickups[playerId]?.[holeNumber] ? '*' : ''}
                           </Text>
                           <Text style={[styles.scoreLabel, { color: scoreInfo?.color || '#666' }]}>
                             {scoreInfo?.label}
@@ -347,10 +448,20 @@ export default function GroupScorecard({ navigation, route, user, sessionToken }
 
                     <TouchableOpacity
                       style={styles.scoreBtn}
-                      onPress={() => saveScore(playerId, holeNumber, Math.min(20, (currentScore ?? holePar) + 1))}
+                      onPress={() => handlePlusPress(playerId, currentScore, holePar, holeNumber)}
+                      onPressIn={() => handlePlusPressIn(playerId, holePar, holeSI, holeNumber)}
+                      onPressOut={() => handlePlusPressOut(playerId)}
                     >
                       <Text style={styles.scoreBtnText}>+</Text>
                     </TouchableOpacity>
+                  </View>
+                )}
+
+                {totalStableford > 0 && (
+                  <View style={styles.stablefordBadgeRow}>
+                    <View style={styles.stablefordBadge}>
+                      <Text style={styles.stablefordBadgeText}>{totalStableford} pts</Text>
+                    </View>
                   </View>
                 )}
               </View>
@@ -458,6 +569,21 @@ const styles = StyleSheet.create({
     paddingTop: 52,
     paddingBottom: 20,
   },
+  headerTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  headerBottomRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  courseNameBlock: {
+    flex: 1,
+    marginRight: 12,
+  },
   backButton: {
     marginBottom: 12,
   },
@@ -465,6 +591,22 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.5)',
     fontSize: 13,
     fontWeight: '400',
+  },
+  leaderboardBtn: {
+    backgroundColor: 'transparent',
+    borderRadius: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.3)',
+    alignItems: 'center',
+  },
+  leaderboardBtnText: {
+    color: 'white',
+    fontSize: 9,
+    fontWeight: '600',
+    letterSpacing: 1.4,
+    textAlign: 'center',
   },
   courseName: {
     fontSize: 22,
@@ -642,6 +784,30 @@ const styles = StyleSheet.create({
   totalScore: {
     fontSize: 11,
     color: '#bbb',
+  },
+  totalStableford: {
+    fontSize: 11,
+    color: '#7b1fa2',
+    fontWeight: '600',
+  },
+  stablefordBadgeRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    marginTop: 10,
+  },
+  stablefordBadge: {
+    backgroundColor: 'rgba(123,31,162,0.08)',
+    borderRadius: 3,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderWidth: 1,
+    borderColor: 'rgba(123,31,162,0.2)',
+  },
+  stablefordBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#7b1fa2',
+    letterSpacing: 0.3,
   },
 
   // Score controls

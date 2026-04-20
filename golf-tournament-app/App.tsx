@@ -9,6 +9,7 @@ import LoginScreen from './src/screens/LoginScreen';
 import CourseScorecard from './src/screens/CourseScorecard';
 import GroupScorecard from './src/screens/GroupScorecard';
 import FullLeaderboard from './src/screens/FullLeaderboard';
+import RoundLeaderboard from './src/screens/RoundLeaderboard';
 
 const isWeb = typeof window !== 'undefined' && typeof window.localStorage !== 'undefined';
 
@@ -33,7 +34,15 @@ export default function App() {
         if (storedUser && storedToken) {
           setUser(JSON.parse(storedUser));
           setSessionToken(storedToken);
-          setCurrentScreen('home');
+          // Restore last screen from sessionStorage (survives refresh, not new tab)
+          const storedScreen = sessionStorage.getItem('golf_screen');
+          const storedParams = sessionStorage.getItem('golf_screen_params');
+          if (storedScreen && storedScreen !== 'login') {
+            setCurrentScreen(storedScreen);
+            setScreenParams(storedParams ? JSON.parse(storedParams) : {});
+          } else {
+            setCurrentScreen('home');
+          }
         }
       } catch (_) {}
     }
@@ -94,6 +103,8 @@ export default function App() {
       try {
         localStorage.removeItem('golf_user');
         localStorage.removeItem('golf_token');
+        sessionStorage.removeItem('golf_screen');
+        sessionStorage.removeItem('golf_screen_params');
       } catch (_) {}
     }
     setUser(null);
@@ -107,9 +118,12 @@ export default function App() {
       setScreenHistory(prev => [...prev, { screen: currentScreen, params: screenParams }]);
       setCurrentScreen(screen);
       setScreenParams(params || {});
-      // Push a browser history entry so the back button fires popstate
       if (isWeb) {
         window.history.pushState({ appNav: true }, '');
+        try {
+          sessionStorage.setItem('golf_screen', screen);
+          sessionStorage.setItem('golf_screen_params', JSON.stringify(params || {}));
+        } catch (_) {}
       }
     },
     goBack: () => {
@@ -118,8 +132,20 @@ export default function App() {
         setScreenHistory(h => h.slice(0, -1));
         setCurrentScreen(prev.screen);
         setScreenParams(prev.params);
+        if (isWeb) {
+          try {
+            sessionStorage.setItem('golf_screen', prev.screen);
+            sessionStorage.setItem('golf_screen_params', JSON.stringify(prev.params || {}));
+          } catch (_) {}
+        }
       } else {
         setCurrentScreen('home');
+        if (isWeb) {
+          try {
+            sessionStorage.removeItem('golf_screen');
+            sessionStorage.removeItem('golf_screen_params');
+          } catch (_) {}
+        }
       }
     }
   };
@@ -145,6 +171,8 @@ export default function App() {
         return <GroupScorecard navigation={navigation} route={{ params: screenParams }} user={user} sessionToken={sessionToken} />;
       case 'FullLeaderboard':
         return <FullLeaderboard navigation={navigation} route={{ params: screenParams }} user={user} sessionToken={sessionToken} />;
+      case 'RoundLeaderboard':
+        return <RoundLeaderboard navigation={navigation} route={{ params: screenParams }} user={user} sessionToken={sessionToken} />;
       case 'login':
         return <LoginScreen navigation={navigation} onLogin={handleLogin} />;
       default:
