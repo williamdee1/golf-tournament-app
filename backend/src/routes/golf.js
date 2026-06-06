@@ -111,7 +111,10 @@ router.post('/scrape-url', async (req, res) => {
 
     // Detect the source and use appropriate scraper
     let courseData;
-    if (url.includes('golfify.io')) {
+    if (url.includes('18birdies.com')) {
+      console.log('🐦 Detected 18Birdies URL - using Astro props scraper');
+      courseData = await scrape18Birdies(url);
+    } else if (url.includes('golfify.io')) {
       console.log('📊 Detected Golfify URL - using JSON scraper');
       courseData = await scrapeGolfifyScorecard(url);
     } else {
@@ -133,6 +136,121 @@ router.post('/scrape-url', async (req, res) => {
     });
   }
 });
+
+// 18Birdies scraper — extracts data from Astro island props embedded in page HTML
+async function scrape18Birdies(url) {
+  const axios = require('axios');
+
+  // Recursively decode Astro's serialised props: [0, val] = scalar/object, [1, arr] = array
+  function decode(node) {
+    if (node === null || node === undefined) return node;
+    if (Array.isArray(node)) {
+      if (node.length === 2 && (node[0] === 0 || node[0] === 1)) {
+        if (node[0] === 1 && Array.isArray(node[1])) return node[1].map(decode);
+        return decode(node[1]);
+      }
+      return node.map(decode);
+    }
+    if (typeof node === 'object') {
+      const out = {};
+      for (const k of Object.keys(node)) out[k] = decode(node[k]);
+      return out;
+    }
+    return node;
+  }
+
+  const headers = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+    'Accept-Language': 'en-GB,en;q=0.9',
+    'Referer': 'https://www.google.com/',
+  };
+
+  const response = await axios.get(url, { headers, timeout: 15000 });
+  const body = response.data;
+
+  // Find all astro-island elements with props attributes
+  const islands = [...body.matchAll(/<astro-island[^>]*props="([^"]+)"[^>]*>/g)];
+  if (!islands.length) throw new Error('No Astro island data found on this page');
+
+  // Find the first island that has a "profile" prop containing club/holes data
+  let club = null;
+  let course = null;
+  for (const island of islands) {
+    try {
+      const raw = island[1].replace(/&quot;/g, '"').replace(/&amp;/g, '&');
+      const props = JSON.parse(raw);
+      if (!props.profile) continue;
+      const profile = decode(props.profile);
+      if (!profile.club || !profile.club.holes || profile.club.holes.length === 0) continue;
+      club = profile.club;
+      course = club.courses && club.courses[0];
+      break;
+    } catch (_) { continue; }
+  }
+
+  if (!club) throw new Error('Could not find course scorecard data in page');
+
+  const courseName = club.name || (course && course.name) || 'Unknown Course';
+  console.log(`📋 Extracting scorecard for: ${courseName}`);
+  console.log(`⛳ ${club.holes.length} holes, ${club.tees.length} tees`);
+
+  // Build tee list — merge M/F variants of the same colour into one entry
+  const tees = [];
+  const seenTeeNames = new Set();
+  club.tees.forEach((tee, i) => {
+    const key = tee.name; // e.g. "White", "Yellow"
+    if (seenTeeNames.has(key)) return;
+    seenTeeNames.add(key);
+    const rating = course ? course.tcrs[i] : null;
+    const slope  = course ? course.tsls[i] : null;
+    tees.push({ name: tee.name, color: tee.name, rating, slope });
+  });
+
+  // Build hole list
+  const holes = club.holes.map((h, i) => {
+    const yardages = {};
+    let teeIdx = 0;
+    club.tees.forEach((tee, ti) => {
+      if (!seenTeeNames.has(tee.name + '_counted')) {
+        // First occurrence of this tee colour
+        yardages[tee.name.toLowerCase()] = h.teeYardages[ti] || 0;
+        // Mark it so we don't double-count M/F duplicates
+        seenTeeNames.add(tee.name + '_counted');
+      }
+    });
+    return {
+      number: i + 1,
+      par: h.menPar || 4,
+      handicap: h.menHandicap || 0,
+      yardages,
+    };
+  });
+
+  // Re-clear the _counted markers so they don't pollute the tees list
+  for (const k of [...seenTeeNames]) { if (k.endsWith('_counted')) seenTeeNames.delete(k); }
+
+  const totalPar = holes.reduce((s, h) => s + h.par, 0);
+  const totalYardage = {};
+  tees.forEach(tee => {
+    const color = tee.name.toLowerCase();
+    totalYardage[color] = holes.reduce((s, h) => s + (h.yardages[color] || 0), 0);
+  });
+
+  console.log(`✅ Scraped ${holes.length} holes, par ${totalPar}, tees: ${tees.map(t => t.name).join(', ')}`);
+
+  return {
+    name: courseName,
+    location: club.address || '',
+    holes,
+    tees,
+    totalPar,
+    totalYardage,
+    url,
+    source: '18birdies',
+    scrapedAt: new Date().toISOString(),
+  };
+}
 
 // General scorecard scraper function
 async function scrapeGeneralScorecard(url) {
