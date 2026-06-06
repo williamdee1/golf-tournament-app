@@ -136,72 +136,108 @@ router.post('/scrape-url', async (req, res) => {
 
 // General scorecard scraper function
 async function scrapeGeneralScorecard(url) {
-  const puppeteer = require('puppeteer-core');
   const cheerio = require('cheerio');
+  const axios = require('axios');
 
-  let browser;
+  // Realistic browser headers to avoid bot detection
+  const browserHeaders = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+    'Accept-Language': 'en-GB,en;q=0.9',
+    'Accept-Encoding': 'gzip, deflate, br',
+    'Referer': 'https://www.google.com/',
+    'Upgrade-Insecure-Requests': '1',
+    'Sec-Fetch-Dest': 'document',
+    'Sec-Fetch-Mode': 'navigate',
+    'Sec-Fetch-Site': 'cross-site',
+    'Sec-Fetch-User': '?1',
+    'sec-ch-ua': '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
+    'sec-ch-ua-mobile': '?0',
+    'sec-ch-ua-platform': '"Windows"',
+    'Cache-Control': 'max-age=0',
+    'Connection': 'keep-alive',
+  };
+
+  let html;
+
+  // Try plain HTTP fetch first — avoids bot detection for server-rendered pages
   try {
-    console.log(`🔍 Launching browser to scrape: ${url}`);
-
-    // Windows Chrome paths
-    const windowsChromePaths = [
-      'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
-      'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
-      process.env.LOCALAPPDATA + '\\Google\\Chrome\\Application\\chrome.exe'
-    ];
-
-    let executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || process.env.CHROME_BIN;
-
-    // Try to find Chrome on Windows if no explicit path is set
-    if (!executablePath && process.platform === 'win32') {
-      for (const path of windowsChromePaths) {
-        try {
-          const fs = require('fs');
-          if (fs.existsSync(path)) {
-            executablePath = path;
-            break;
-          }
-        } catch (e) {
-          // Continue to next path
-        }
-      }
-    }
-
-    browser = await puppeteer.launch({
-      headless: true,
-      executablePath: executablePath,
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-accelerated-2d-canvas',
-        '--no-first-run',
-        '--no-zygote',
-        '--disable-gpu'
-      ]
+    console.log(`🔍 Attempting direct HTTP fetch: ${url}`);
+    const response = await axios.get(url, {
+      headers: browserHeaders,
+      timeout: 15000,
+      maxRedirects: 5,
+      decompress: true,
+      validateStatus: () => true, // Don't throw on 4xx so we can inspect the response
     });
 
-    const page = await browser.newPage();
-    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+    const isWafBlock = response.status === 405 ||
+      (response.headers['x-amzn-waf-action'] === 'captcha') ||
+      (response.headers['x-amzn-waf-action'] === 'block');
 
-    await page.goto(url, { waitUntil: 'networkidle0', timeout: 30000 });
-
-    // Wait for table data to be populated by JavaScript (cells shouldn't all be "--")
-    try {
-      await page.waitForFunction(() => {
-        const cells = document.querySelectorAll('table td');
-        let nonDashCount = 0;
-        cells.forEach(cell => {
-          const text = cell.textContent.trim();
-          if (text && text !== '--' && text !== '-' && /^\d+$/.test(text)) nonDashCount++;
-        });
-        return nonDashCount > 20; // At least 20 numeric cells loaded
-      }, { timeout: 5000 });
-    } catch (e) {
-      console.log('⚠️ Table data wait timed out, proceeding with current content');
+    if (isWafBlock) {
+      throw new Error('BOT_PROTECTION: This site is protected by AWS WAF CAPTCHA and cannot be scraped automatically. Please enter the course scorecard manually using the Edit button after adding the course.');
     }
 
-    const html = await page.content();
+    const bodyText = typeof response.data === 'string' ? response.data : String(response.data);
+    const looksLikeChallenge = /(<title>[^<]*(verify|captcha|attention required|just a moment)[^<]*<\/title>|cf-browser-verification|hcaptcha\.com|awsWafCookieDomainList)/i.test(bodyText);
+
+    if (!looksLikeChallenge && response.status === 200 && bodyText.length > 2000) {
+      console.log(`✅ Direct HTTP fetch succeeded (${bodyText.length} bytes)`);
+      html = bodyText;
+    } else if (looksLikeChallenge) {
+      throw new Error('BOT_PROTECTION: This site requires human verification (CAPTCHA) and cannot be scraped automatically. Please enter the course scorecard manually using the Edit button after adding the course.');
+    } else {
+      console.log(`⚠️ Unexpected response (status ${response.status}), falling back to Puppeteer`);
+    }
+  } catch (fetchErr) {
+    if (fetchErr.message.startsWith('BOT_PROTECTION:')) throw fetchErr;
+    console.log(`⚠️ Direct fetch failed (${fetchErr.message}), falling back to Puppeteer`);
+  }
+
+  // Fall back to Puppeteer if the plain fetch didn't work
+  if (!html) {
+    const puppeteer = require('puppeteer-core');
+    let browser;
+    try {
+      const windowsChromePaths = [
+        'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+        'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+        process.env.LOCALAPPDATA + '\\Google\\Chrome\\Application\\chrome.exe'
+      ];
+      let executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || process.env.CHROME_BIN;
+      if (!executablePath && process.platform === 'win32') {
+        const fs = require('fs');
+        for (const p of windowsChromePaths) {
+          if (fs.existsSync(p)) { executablePath = p; break; }
+        }
+      }
+      browser = await puppeteer.launch({
+        headless: true,
+        executablePath,
+        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--no-first-run', '--disable-gpu']
+      });
+      const page = await browser.newPage();
+      await page.setUserAgent(browserHeaders['User-Agent']);
+      await page.setExtraHTTPHeaders({ 'Accept-Language': 'en-GB,en;q=0.9' });
+      await page.goto(url, { waitUntil: 'networkidle0', timeout: 30000 });
+      try {
+        await page.waitForFunction(() => {
+          const cells = document.querySelectorAll('table td');
+          let n = 0;
+          cells.forEach(c => { if (/^\d+$/.test(c.textContent.trim())) n++; });
+          return n > 20;
+        }, { timeout: 5000 });
+      } catch (_) {}
+      html = await page.content();
+      await browser.close();
+    } catch (err) {
+      if (browser) await browser.close().catch(() => {});
+      throw new Error(`Both HTTP fetch and Puppeteer failed: ${err.message}`);
+    }
+  }
+
+  try {
     const $ = cheerio.load(html);
 
     // Extract course name from page title or headers
@@ -454,10 +490,6 @@ async function scrapeGeneralScorecard(url) {
   } catch (error) {
     console.error('❌ General scorecard scraping failed:', error.message);
     throw new Error(`Scorecard scraping failed: ${error.message}`);
-  } finally {
-    if (browser) {
-      await browser.close();
-    }
   }
 }
 

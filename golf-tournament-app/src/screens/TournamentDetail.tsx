@@ -237,7 +237,15 @@ export default function TournamentDetail({ navigation, route, user, sessionToken
         setCourseUrl('');
         setShowAddCourseModal(false);
       } else {
-        Alert.alert('Error', 'Failed to scrape course data from the provided URL');
+        const msg = scrapeData.message || scrapeData.error || '';
+        if (msg.startsWith('BOT_PROTECTION:')) {
+          Alert.alert(
+            'Course Protected',
+            'This site requires human verification and cannot be scraped automatically.\n\nAdd the course with placeholder data first, then use the Edit button to enter the scorecard manually.',
+          );
+        } else {
+          Alert.alert('Error', 'Failed to scrape course data from the provided URL. ' + msg);
+        }
       }
     } catch (error) {
       console.error('Error adding course:', error);
