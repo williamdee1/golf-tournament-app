@@ -601,7 +601,7 @@ router.put('/:id/handicap/:courseId', authRouter.authenticateUser, (req, res) =>
 router.post('/:id/scorecards', authRouter.authenticateUser, (req, res) => {
   try {
     const { id } = req.params;
-    const { courseId, playerIds } = req.body;
+    const { courseId, playerIds, guestPlayers, sideGame } = req.body;
     const user = req.user;
 
     const tournamentIndex = tournaments.findIndex(t => t.id === id);
@@ -614,16 +614,14 @@ router.post('/:id/scorecards', authRouter.authenticateUser, (req, res) => {
     const course = tournament.courses.find(c => c.id === courseId);
     if (!course) return res.status(404).json({ error: 'Course not found in tournament' });
 
-    if (!Array.isArray(playerIds) || playerIds.length === 0) {
+    const validPlayers = Array.isArray(playerIds)
+      ? playerIds.map(pid => tournament.players.find(p => p.id === pid)).filter(Boolean)
+      : [];
+
+    const guests = Array.isArray(guestPlayers) ? guestPlayers : [];
+
+    if (validPlayers.length === 0 && guests.length === 0) {
       return res.status(400).json({ error: 'At least one player is required' });
-    }
-
-    const validPlayers = playerIds
-      .map(pid => tournament.players.find(p => p.id === pid))
-      .filter(Boolean);
-
-    if (validPlayers.length === 0) {
-      return res.status(400).json({ error: 'No valid tournament players specified' });
     }
 
     const scorecardId = 'sc_' + Math.random().toString(36).substr(2, 8);
@@ -633,8 +631,18 @@ router.post('/:id/scorecards', authRouter.authenticateUser, (req, res) => {
       courseName: course.name,
       createdBy: user.id,
       createdByName: user.username,
-      playerIds: validPlayers.map(p => p.id),
-      playerNames: Object.fromEntries(validPlayers.map(p => [p.id, p.username])),
+      playerIds: [
+        ...validPlayers.map(p => p.id),
+        ...guests.map(g => g.id),
+      ],
+      playerNames: {
+        ...Object.fromEntries(validPlayers.map(p => [p.id, p.username])),
+        ...Object.fromEntries(guests.map(g => [g.id, g.name])),
+      },
+      guestPlayers: guests,
+      guestScores: {},
+      guestHandicaps: {},
+      sideGame: sideGame || null,
       createdAt: new Date().toISOString()
     };
 
@@ -649,6 +657,63 @@ router.post('/:id/scorecards', authRouter.authenticateUser, (req, res) => {
   } catch (error) {
     console.error('❌ Create scorecard error:', error);
     res.status(500).json({ error: 'Failed to create scorecard', message: error.message });
+  }
+});
+
+// Save a guest player's score on a hole
+router.put('/:id/scorecards/:scorecardId/guest-score/:holeNumber', authRouter.authenticateUser, (req, res) => {
+  try {
+    const { id, scorecardId, holeNumber } = req.params;
+    const { guestId, score } = req.body;
+    const user = req.user;
+
+    const tournamentIndex = tournaments.findIndex(t => t.id === id);
+    if (tournamentIndex === -1) return res.status(404).json({ error: 'Tournament not found' });
+
+    const tournament = tournaments[tournamentIndex];
+    const isPlayer = tournament.players.some(p => p.id === user.id);
+    if (!isPlayer) return res.status(403).json({ error: 'You are not part of this tournament' });
+
+    const scorecardIndex = (tournament.scorecards || []).findIndex(s => s.id === scorecardId);
+    if (scorecardIndex === -1) return res.status(404).json({ error: 'Scorecard not found' });
+
+    const sc = tournaments[tournamentIndex].scorecards[scorecardIndex];
+    if (!sc.guestScores) sc.guestScores = {};
+    if (!sc.guestScores[guestId]) sc.guestScores[guestId] = {};
+    sc.guestScores[guestId][holeNumber] = score;
+    saveTournaments();
+
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to save guest score', message: error.message });
+  }
+});
+
+// Save a guest player's course handicap
+router.put('/:id/scorecards/:scorecardId/guest-handicap', authRouter.authenticateUser, (req, res) => {
+  try {
+    const { id, scorecardId } = req.params;
+    const { guestId, courseHandicap } = req.body;
+    const user = req.user;
+
+    const tournamentIndex = tournaments.findIndex(t => t.id === id);
+    if (tournamentIndex === -1) return res.status(404).json({ error: 'Tournament not found' });
+
+    const tournament = tournaments[tournamentIndex];
+    const isPlayer = tournament.players.some(p => p.id === user.id);
+    if (!isPlayer) return res.status(403).json({ error: 'You are not part of this tournament' });
+
+    const scorecardIndex = (tournament.scorecards || []).findIndex(s => s.id === scorecardId);
+    if (scorecardIndex === -1) return res.status(404).json({ error: 'Scorecard not found' });
+
+    const sc = tournaments[tournamentIndex].scorecards[scorecardIndex];
+    if (!sc.guestHandicaps) sc.guestHandicaps = {};
+    sc.guestHandicaps[guestId] = courseHandicap;
+    saveTournaments();
+
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to save guest handicap', message: error.message });
   }
 });
 
@@ -703,8 +768,9 @@ router.patch('/:id/scorecards/:scorecardId/submit', authRouter.authenticateUser,
     if (scorecardIndex === -1) return res.status(404).json({ error: 'Scorecard not found' });
 
     const scorecard = scorecards[scorecardIndex];
-    if (scorecard.createdBy !== user.id && tournament.createdBy !== user.id) {
-      return res.status(403).json({ error: 'Only the scorecard creator can submit it' });
+    const isInScorecard = scorecard.playerIds.includes(user.id);
+    if (!isInScorecard && tournament.createdBy !== user.id) {
+      return res.status(403).json({ error: 'Only scorecard players can submit it' });
     }
 
     tournaments[tournamentIndex].scorecards[scorecardIndex].submitted = true;
@@ -737,8 +803,9 @@ router.patch('/:id/scorecards/:scorecardId/unsubmit', authRouter.authenticateUse
     if (scorecardIndex === -1) return res.status(404).json({ error: 'Scorecard not found' });
 
     const scorecard = scorecards[scorecardIndex];
-    if (scorecard.createdBy !== user.id && tournament.createdBy !== user.id) {
-      return res.status(403).json({ error: 'Only the scorecard creator can edit it' });
+    const isInScorecard = scorecard.playerIds.includes(user.id);
+    if (!isInScorecard && tournament.createdBy !== user.id) {
+      return res.status(403).json({ error: 'Only scorecard players can edit it' });
     }
 
     tournaments[tournamentIndex].scorecards[scorecardIndex].submitted = false;

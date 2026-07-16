@@ -20,6 +20,7 @@ export default function GroupScorecard({ navigation, route, user, sessionToken }
   const [handicapText, setHandicapText] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(scorecard.submitted || false);
+  const [activeTab, setActiveTab] = useState<'scoring' | 'sideGame'>('scoring');
   const longPressTimers = useRef<{ [playerId: string]: ReturnType<typeof setTimeout> }>({});
   const longPressFired = useRef<{ [playerId: string]: boolean }>({});
 
@@ -31,6 +32,8 @@ export default function GroupScorecard({ navigation, route, user, sessionToken }
     loadData();
   }, []);
 
+  const guestIds = new Set((scorecard.guestPlayers || []).map((g: any) => g.id));
+
   const loadData = async () => {
     try {
       const response = await fetch(API_ENDPOINTS.tournamentDetail(tournamentId), {
@@ -39,26 +42,34 @@ export default function GroupScorecard({ navigation, route, user, sessionToken }
       const data = await response.json();
       if (data.success && data.tournament) {
         const t = data.tournament;
+        // Find the live scorecard (may have updated guestScores/guestHandicaps)
+        const liveScorecard = (t.scorecards || []).find((s: any) => s.id === scorecard.id);
+
         const newScores: any = {};
         const newHandicaps: any = {};
         for (const playerId of scorecard.playerIds) {
-          newScores[playerId] = t.scores?.[playerId]?.[course.id] || {};
-          const h = t.handicaps?.[playerId]?.[course.id];
-          if (h !== undefined) newHandicaps[playerId] = h;
+          if (guestIds.has(playerId)) {
+            newScores[playerId] = liveScorecard?.guestScores?.[playerId] || {};
+            const h = liveScorecard?.guestHandicaps?.[playerId];
+            if (h !== undefined) newHandicaps[playerId] = h;
+          } else {
+            newScores[playerId] = t.scores?.[playerId]?.[course.id] || {};
+            const h = t.handicaps?.[playerId]?.[course.id];
+            if (h !== undefined) newHandicaps[playerId] = h;
+          }
         }
         setScores(newScores);
         setHandicaps(newHandicaps);
 
         // Jump to the next unscored hole on load
-        const allScores = newScores;
         const firstUnscored = holes.findIndex((_: any, i: number) => {
           const hNum = holes[i].number || (i + 1);
           return scorecard.playerIds.some((pid: string) =>
-            allScores[pid]?.[hNum] === undefined || allScores[pid]?.[hNum] === 0
+            newScores[pid]?.[hNum] === undefined || newScores[pid]?.[hNum] === 0
           );
         });
         if (firstUnscored === -1) {
-          setCurrentHoleIndex(holes.length - 1); // all scored — show last hole
+          setCurrentHoleIndex(holes.length - 1);
         } else if (firstUnscored > 0) {
           setCurrentHoleIndex(firstUnscored);
         }
@@ -108,11 +119,19 @@ export default function GroupScorecard({ navigation, route, user, sessionToken }
       [playerId]: { ...(prev[playerId] || {}), [holeNumber]: score }
     }));
     try {
-      await fetch(API_ENDPOINTS.saveScore(tournamentId, course.id, holeNumber), {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${sessionToken}` },
-        body: JSON.stringify({ score, targetPlayerId: playerId })
-      });
+      if (guestIds.has(playerId)) {
+        await fetch(API_ENDPOINTS.saveGuestScore(tournamentId, scorecard.id, holeNumber), {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${sessionToken}` },
+          body: JSON.stringify({ guestId: playerId, score })
+        });
+      } else {
+        await fetch(API_ENDPOINTS.saveScore(tournamentId, course.id, holeNumber), {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${sessionToken}` },
+          body: JSON.stringify({ score, targetPlayerId: playerId })
+        });
+      }
     } catch (error) {
       console.error('Error saving score:', error);
     }
@@ -121,11 +140,19 @@ export default function GroupScorecard({ navigation, route, user, sessionToken }
   const saveHandicap = async (playerId: string, handicap: number) => {
     setHandicaps(prev => ({ ...prev, [playerId]: handicap }));
     try {
-      await fetch(API_ENDPOINTS.saveHandicap(tournamentId, course.id), {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${sessionToken}` },
-        body: JSON.stringify({ courseHandicap: handicap, targetPlayerId: playerId })
-      });
+      if (guestIds.has(playerId)) {
+        await fetch(API_ENDPOINTS.saveGuestHandicap(tournamentId, scorecard.id), {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${sessionToken}` },
+          body: JSON.stringify({ guestId: playerId, courseHandicap: handicap })
+        });
+      } else {
+        await fetch(API_ENDPOINTS.saveHandicap(tournamentId, course.id), {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${sessionToken}` },
+          body: JSON.stringify({ courseHandicap: handicap, targetPlayerId: playerId })
+        });
+      }
     } catch (error) {
       console.error('Error saving handicap:', error);
     }
@@ -226,6 +253,46 @@ export default function GroupScorecard({ navigation, route, user, sessionToken }
       if (typeof s !== 'number') return total;
       return total + calculateStableford(s, hole.par, playerId, hole.handicap || 0);
     }, 0);
+  };
+
+  // Side game: per-hole stableford for a player (uses live scores + handicaps)
+  const stablefordForPlayer = (playerId: string, hole: any): number => {
+    const hNum = hole.number || (holes.indexOf(hole) + 1);
+    const s = scores[playerId]?.[hNum];
+    if (typeof s !== 'number' || s <= 0) return 0;
+    return calculateStableford(s, hole.par, playerId, hole.handicap || 0);
+  };
+
+  // Build side game data for rendering
+  const buildSideGameRows = () => {
+    if (!scorecard.sideGame) return null;
+    const sideGame = scorecard.sideGame;
+    const allIds = scorecard.playerIds as string[];
+
+    return holes.map((hole: any) => {
+      const hNum = hole.number || (holes.indexOf(hole) + 1);
+      const pts = allIds.map(id => stablefordForPlayer(id, hole));
+      // True only if at least one player has actually entered a score for this hole
+      const hasScore = allIds.some(id => {
+        const s = scores[id]?.[hNum];
+        return typeof s === 'number' && s > 0;
+      });
+
+      if (sideGame.type === 'topX') {
+        const x = sideGame.x || 1;
+        const sorted = [...pts].sort((a, b) => b - a);
+        const topPts = sorted.slice(0, x).reduce((s, v) => s + v, 0);
+        return { hNum, par: hole.par, value: topPts, hasScore };
+      } else {
+        // team
+        const assignments = sideGame.teamAssignments || {};
+        const teamA = allIds.filter(id => assignments[id] === 0);
+        const teamB = allIds.filter(id => assignments[id] === 1);
+        const sumA = teamA.reduce((s, id) => s + stablefordForPlayer(id, hole), 0);
+        const sumB = teamB.reduce((s, id) => s + stablefordForPlayer(id, hole), 0);
+        return { hNum, par: hole.par, teamA: sumA, teamB: sumB, hasScore };
+      }
+    });
   };
 
   if (!currentHole) {
@@ -336,8 +403,106 @@ export default function GroupScorecard({ navigation, route, user, sessionToken }
           </View>
         </ScrollView>
 
+        {/* Tab Bar — only shown when a side game is active */}
+        {scorecard.sideGame && (
+          <View style={styles.tabBar}>
+            <TouchableOpacity
+              style={[styles.tab, activeTab === 'scoring' && styles.tabActive]}
+              onPress={() => setActiveTab('scoring')}
+            >
+              <Text style={[styles.tabText, activeTab === 'scoring' && styles.tabTextActive]}>SCORECARD</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.tab, activeTab === 'sideGame' && styles.tabActive]}
+              onPress={() => setActiveTab('sideGame')}
+            >
+              <Text style={[styles.tabText, activeTab === 'sideGame' && styles.tabTextActive]}>SIDE GAME</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Side Game Panel */}
+        {activeTab === 'sideGame' && scorecard.sideGame && (() => {
+          const sideGame = scorecard.sideGame;
+          const rows = buildSideGameRows() || [];
+          const isTopX = sideGame.type === 'topX';
+          const assignments = sideGame.teamAssignments || {};
+          const allIds = scorecard.playerIds as string[];
+          const teamANames = allIds.filter((id: string) => assignments[id] === 0).map((id: string) => scorecard.playerNames[id]).join(', ') || 'Team A';
+          const teamBNames = allIds.filter((id: string) => assignments[id] === 1).map((id: string) => scorecard.playerNames[id]).join(', ') || 'Team B';
+          const totalA = rows.reduce((s: number, r: any) => s + (r.hasScore ? (r.teamA || 0) : 0), 0);
+          const totalB = rows.reduce((s: number, r: any) => s + (r.hasScore ? (r.teamB || 0) : 0), 0);
+          const totalTopX = rows.reduce((s: number, r: any) => s + (r.hasScore ? (r.value || 0) : 0), 0);
+
+          return (
+            <View style={styles.sideGamePanel}>
+              {isTopX ? (
+                <>
+                  <Text style={styles.sideGameTitle}>TOP {sideGame.x} SCORES PER HOLE</Text>
+                  <View style={styles.sideGameTable}>
+                    <View style={[styles.sideGameRow, styles.sideGameHeaderRow]}>
+                      <Text style={[styles.sideGameCell, styles.sideGameHeaderText, { width: 44 }]}>Hole</Text>
+                      <Text style={[styles.sideGameCell, styles.sideGameHeaderText, { width: 36 }]}>Par</Text>
+                      <Text style={[styles.sideGameCell, styles.sideGameHeaderText, { flex: 1, textAlign: 'right' }]}>Pts</Text>
+                      <Text style={[styles.sideGameCell, styles.sideGameHeaderText, { flex: 1, textAlign: 'right' }]}>Total</Text>
+                    </View>
+                    {rows.map((row: any, i: number) => {
+                      const running = rows.slice(0, i + 1).reduce((s: number, r: any) => s + (r.hasScore ? (r.value || 0) : 0), 0);
+                      return (
+                        <View key={row.hNum} style={[styles.sideGameRow, i % 2 === 1 && styles.sideGameRowAlt]}>
+                          <Text style={[styles.sideGameCell, { width: 44 }]}>{row.hNum}</Text>
+                          <Text style={[styles.sideGameCell, { width: 36, color: '#aaa' }]}>{row.par}</Text>
+                          <Text style={[styles.sideGameCell, { flex: 1, textAlign: 'right', color: row.value > 0 ? '#2d9e5f' : '#ccc', fontWeight: '600' }]}>
+                            {row.hasScore ? (row.value > 0 ? row.value : '0') : '-'}
+                          </Text>
+                          <Text style={[styles.sideGameCell, { flex: 1, textAlign: 'right', fontWeight: '600', color: '#062612' }]}>
+                            {row.hasScore ? running : '-'}
+                          </Text>
+                        </View>
+                      );
+                    })}
+                    <View style={[styles.sideGameRow, styles.sideGameTotalRow]}>
+                      <Text style={[styles.sideGameCell, { width: 44, fontWeight: '700', color: 'white' }]}>TOT</Text>
+                      <Text style={[styles.sideGameCell, { width: 36 }]}></Text>
+                      <Text style={[styles.sideGameCell, { flex: 1 }]}></Text>
+                      <Text style={[styles.sideGameCell, { flex: 1, textAlign: 'right', fontWeight: '700', color: 'white', fontSize: 20 }]}>{totalTopX}</Text>
+                    </View>
+                  </View>
+                </>
+              ) : (
+                <>
+                  <Text style={styles.sideGameTitle}>TEAM GAME</Text>
+                  <View style={styles.sideGameTable}>
+                    <View style={[styles.sideGameRow, styles.sideGameHeaderRow]}>
+                      <Text style={[styles.sideGameCell, styles.sideGameHeaderText, { width: 44 }]}>Hole</Text>
+                      <Text style={[styles.sideGameCell, styles.sideGameHeaderText, { flex: 1, textAlign: 'right' }]} numberOfLines={1}>{teamANames}</Text>
+                      <Text style={[styles.sideGameCell, styles.sideGameHeaderText, { flex: 1, textAlign: 'right' }]} numberOfLines={1}>{teamBNames}</Text>
+                    </View>
+                    {rows.map((row: any, i: number) => (
+                      <View key={row.hNum} style={[styles.sideGameRow, i % 2 === 1 && styles.sideGameRowAlt]}>
+                        <Text style={[styles.sideGameCell, { width: 44 }]}>{row.hNum}</Text>
+                        <Text style={[styles.sideGameCell, { flex: 1, textAlign: 'right', fontWeight: '600', color: row.teamA > row.teamB ? '#2d9e5f' : row.teamA === row.teamB ? '#aaa' : '#1a2e1b' }]}>
+                          {row.teamA > 0 || row.teamB > 0 ? row.teamA : '-'}
+                        </Text>
+                        <Text style={[styles.sideGameCell, { flex: 1, textAlign: 'right', fontWeight: '600', color: row.teamB > row.teamA ? '#2d9e5f' : row.teamB === row.teamA ? '#aaa' : '#1a2e1b' }]}>
+                          {row.teamA > 0 || row.teamB > 0 ? row.teamB : '-'}
+                        </Text>
+                      </View>
+                    ))}
+                    <View style={[styles.sideGameRow, styles.sideGameTotalRow]}>
+                      <Text style={[styles.sideGameCell, { width: 44, fontWeight: '700', color: 'white' }]}>TOT</Text>
+                      <Text style={[styles.sideGameCell, { flex: 1, textAlign: 'right', fontWeight: '700', fontSize: 20, color: totalA >= totalB ? '#2d9e5f' : 'rgba(255,255,255,0.6)' }]}>{totalA}</Text>
+                      <Text style={[styles.sideGameCell, { flex: 1, textAlign: 'right', fontWeight: '700', fontSize: 20, color: totalB >= totalA ? '#2d9e5f' : 'rgba(255,255,255,0.6)' }]}>{totalB}</Text>
+                    </View>
+                  </View>
+                </>
+              )}
+            </View>
+          );
+        })()}
+
         {/* Submitted Banner */}
-        {submitted && (
+        {activeTab === 'scoring' && submitted && (
           <View style={styles.submittedBanner}>
             <Text style={styles.submittedCheck}>✓</Text>
             <View>
@@ -347,8 +512,10 @@ export default function GroupScorecard({ navigation, route, user, sessionToken }
           </View>
         )}
 
-        {/* Player Cards */}
-        <View style={styles.playersSection}>
+        {/* Player Cards + Submit — scoring tab only */}
+        {activeTab === 'scoring' && (
+          <View>
+          <View style={styles.playersSection}>
           {scorecard.playerIds.map((playerId: string) => {
             const playerName = scorecard.playerNames[playerId] || 'Player';
             const currentScore = scores[playerId]?.[holeNumber];
@@ -469,32 +636,34 @@ export default function GroupScorecard({ navigation, route, user, sessionToken }
           })}
         </View>
 
-        {/* Submit / Edit Scorecard — creator only */}
-        {scorecard.createdBy === user?.id && (
-          <View style={styles.submitSection}>
-            {submitted ? (
-              <TouchableOpacity
-                style={[styles.editButton, isSubmitting && styles.submitButtonDisabled]}
-                onPress={handleUnsubmit}
-                disabled={isSubmitting}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.editButtonText}>
-                  {isSubmitting ? 'Updating...' : '✏️  Edit Scores'}
-                </Text>
-              </TouchableOpacity>
-            ) : (
-              <TouchableOpacity
-                style={[styles.submitButton, isSubmitting && styles.submitButtonDisabled]}
-                onPress={handleSubmitScorecard}
-                disabled={isSubmitting}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.submitButtonText}>
-                  {isSubmitting ? 'Submitting...' : 'Submit Scorecard'}
-                </Text>
-              </TouchableOpacity>
-            )}
+          {/* Submit / Edit Scorecard — any scorecard player */}
+          {(scorecard.playerIds?.includes(user?.id) || scorecard.createdBy === user?.id) && (
+            <View style={styles.submitSection}>
+              {submitted ? (
+                <TouchableOpacity
+                  style={[styles.editButton, isSubmitting && styles.submitButtonDisabled]}
+                  onPress={handleUnsubmit}
+                  disabled={isSubmitting}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.editButtonText}>
+                    {isSubmitting ? 'Updating...' : '✏️  Edit Scores'}
+                  </Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity
+                  style={[styles.submitButton, isSubmitting && styles.submitButtonDisabled]}
+                  onPress={handleSubmitScorecard}
+                  disabled={isSubmitting}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.submitButtonText}>
+                    {isSubmitting ? 'Submitting...' : 'Submit Scorecard'}
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
           </View>
         )}
 
@@ -999,5 +1168,82 @@ const styles = StyleSheet.create({
     color: 'white',
     fontWeight: '600',
     fontSize: 14,
+  },
+
+  // Tab bar
+  tabBar: {
+    flexDirection: 'row',
+    backgroundColor: 'white',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.08)',
+  },
+  tab: {
+    flex: 1,
+    paddingVertical: 12,
+    alignItems: 'center',
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
+  },
+  tabActive: {
+    borderBottomColor: '#2d9e5f',
+  },
+  tabText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#bbb',
+    letterSpacing: 1.2,
+  },
+  tabTextActive: {
+    color: '#2d9e5f',
+  },
+
+  // Side game panel
+  sideGamePanel: {
+    padding: 12,
+  },
+  sideGameTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#2d9e5f',
+    letterSpacing: 2,
+    marginBottom: 10,
+    paddingHorizontal: 2,
+  },
+  sideGameTable: {
+    backgroundColor: 'white',
+    borderRadius: 6,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.06)',
+  },
+  sideGameHeaderRow: {
+    backgroundColor: '#062612',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+  },
+  sideGameHeaderText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.7)',
+    letterSpacing: 0.5,
+  },
+  sideGameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 15,
+    paddingHorizontal: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  sideGameRowAlt: {
+    backgroundColor: '#f7f9f7',
+  },
+  sideGameTotalRow: {
+    backgroundColor: '#062612',
+    borderBottomWidth: 0,
+  },
+  sideGameCell: {
+    fontSize: 18,
+    color: '#1a2e1b',
   },
 });

@@ -36,10 +36,7 @@ export default function RoundLeaderboard({ navigation, route, sessionToken }: Pr
       .finally(() => setLoading(false));
   }, []);
 
-  const playerData = (tournament?.players || []).map((player: any) => {
-    const courseScores = tournament.scores?.[player.id]?.[course.id] || {};
-    const courseHandicap = tournament.handicaps?.[player.id]?.[course.id] ?? 0;
-
+  const buildPlayerStats = (name: string, id: string, courseScores: any, courseHandicap: number, isGuest = false) => {
     let gross = 0;
     let par = 0;
     let pts = 0;
@@ -59,9 +56,42 @@ export default function RoundLeaderboard({ navigation, route, sessionToken }: Pr
     const toPar = gross > 0 ? gross - par : null;
     const toParText = toPar === null ? '-' : toPar === 0 ? 'E' : toPar > 0 ? `+${toPar}` : `${toPar}`;
     const thru = holesCompleted === 0 ? '-' : holesCompleted === course.holes.length ? 'F' : String(holesCompleted);
+    return { name, id, gross, pts, holesCompleted, toParText, thru, isGuest, courseScores, courseHandicap };
+  };
 
-    return { player, gross, pts, holesCompleted, toParText, thru, courseHandicap };
+  const playerData = (tournament?.players || []).map((player: any) => {
+    const courseScores = tournament.scores?.[player.id]?.[course.id] || {};
+    const courseHandicap = tournament.handicaps?.[player.id]?.[course.id] ?? 0;
+    return buildPlayerStats(player.username, player.id, courseScores, courseHandicap, false);
   });
+
+  // Add guest players from scorecards for this course
+  const seenGuestIds = new Set<string>();
+  (tournament?.scorecards || [])
+    .filter((sc: any) => sc.courseId === course.id)
+    .forEach((sc: any) => {
+      (sc.guestPlayers || []).forEach((guest: any) => {
+        if (seenGuestIds.has(guest.id)) return;
+        seenGuestIds.add(guest.id);
+        const courseScores = sc.guestScores?.[guest.id] || {};
+        const courseHandicap = sc.guestHandicaps?.[guest.id] ?? 0;
+        playerData.push(buildPlayerStats(`${guest.name} (G)`, guest.id, courseScores, courseHandicap, true));
+      });
+    });
+
+  const goToScorecard = (entry: any) => {
+    if (entry.holesCompleted === 0) return;
+    navigation.navigate('CourseScorecard', {
+      course,
+      tournamentId,
+      tournamentName,
+      viewingPlayer: { id: entry.id, username: entry.name },
+      ...(entry.isGuest && {
+        preloadedScores: entry.courseScores,
+        preloadedHandicap: entry.courseHandicap,
+      }),
+    });
+  };
 
   // Sort: started players first (by pts desc), then unstarted
   playerData.sort((a: any, b: any) => {
@@ -97,27 +127,33 @@ export default function RoundLeaderboard({ navigation, route, sessionToken }: Pr
               <Text style={[styles.headerText, { width: 52, textAlign: 'center' }]}>Pts</Text>
             </View>
 
-            {playerData.map(({ player, holesCompleted, toParText, thru, pts }: any, index: number) => (
-              <View key={player.id} style={[styles.row, index % 2 === 1 && styles.rowAlt]}>
+            {playerData.map((entry: any, index: number) => (
+              <View key={entry.id} style={[styles.row, index % 2 === 1 && styles.rowAlt]}>
                 <Text style={[styles.rankText, { width: 28 }]}>
-                  {holesCompleted > 0 ? index + 1 : '—'}
+                  {entry.holesCompleted > 0 ? index + 1 : '—'}
                 </Text>
-                <Text style={[styles.playerText, { flex: 1 }]}>{player.username}</Text>
-                <Text style={[styles.mutedText, { width: 44, textAlign: 'center' }]}>{thru}</Text>
+                <Text style={[styles.playerText, { flex: 1 }]}>{entry.name}</Text>
+                <Text style={[styles.mutedText, { width: 44, textAlign: 'center' }]}>{entry.thru}</Text>
                 <Text style={[
                   styles.toParText,
                   { width: 60, textAlign: 'center' },
-                  holesCompleted === 0 && styles.mutedText,
+                  entry.holesCompleted === 0 && styles.mutedText,
                 ]}>
-                  {toParText}
+                  {entry.toParText}
                 </Text>
-                <Text style={[
-                  styles.pointsText,
-                  { width: 52, textAlign: 'center' },
-                  holesCompleted === 0 && styles.mutedText,
-                ]}>
-                  {holesCompleted > 0 ? pts : '-'}
-                </Text>
+                <TouchableOpacity
+                  onPress={() => goToScorecard(entry)}
+                  disabled={entry.holesCompleted === 0}
+                  style={{ width: 52, alignItems: 'center' }}
+                >
+                  <Text style={[
+                    styles.pointsText,
+                    { textAlign: 'center', textDecorationLine: entry.holesCompleted > 0 ? 'underline' : 'none' },
+                    entry.holesCompleted === 0 && styles.mutedText,
+                  ]}>
+                    {entry.holesCompleted > 0 ? entry.pts : '-'}
+                  </Text>
+                </TouchableOpacity>
               </View>
             ))}
           </View>

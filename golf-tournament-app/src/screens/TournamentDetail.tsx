@@ -137,6 +137,12 @@ export default function TournamentDetail({ navigation, route, user, sessionToken
   const [showScorecardModal, setShowScorecardModal] = useState(false);
   const [scorecardModalCourse, setScorecardModalCourse] = useState<Course | null>(null);
   const [scorecardSelectedPlayers, setScorecardSelectedPlayers] = useState<string[]>([]);
+  const [scorecardModalStep, setScorecardModalStep] = useState<'players' | 'guests' | 'sideGame'>('players');
+  const [guestPlayers, setGuestPlayers] = useState<{id: string, name: string}[]>([]);
+  const [guestNameInput, setGuestNameInput] = useState('');
+  const [sideGameType, setSideGameType] = useState<'none' | 'topX' | 'team'>('none');
+  const [topXValue, setTopXValue] = useState<1 | 2 | 3>(1);
+  const [teamAssignments, setTeamAssignments] = useState<{[playerId: string]: 0 | 1}>({});
   const [coursesExpanded, setCoursesExpanded] = useState(false);
 
   // Load existing tournament data when component mounts
@@ -446,20 +452,40 @@ export default function TournamentDetail({ navigation, route, user, sessionToken
     }
   };
 
+  const resetScorecardModal = () => {
+    setShowScorecardModal(false);
+    setScorecardSelectedPlayers([]);
+    setScorecardModalStep('players');
+    setGuestPlayers([]);
+    setGuestNameInput('');
+    setSideGameType('none');
+    setTopXValue(1);
+    setTeamAssignments({});
+  };
+
   const createScorecard = async () => {
-    if (!scorecardModalCourse || scorecardSelectedPlayers.length === 0) return;
+    if (!scorecardModalCourse) return;
     const tid = tournament?.id || tournamentId;
+    const sideGame = sideGameType === 'topX'
+      ? { type: 'topX', x: topXValue }
+      : sideGameType === 'team'
+      ? { type: 'team', teamAssignments }
+      : null;
     try {
       const response = await fetch(API_ENDPOINTS.createScorecard(tid), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${sessionToken}` },
-        body: JSON.stringify({ courseId: scorecardModalCourse.id, playerIds: scorecardSelectedPlayers })
+        body: JSON.stringify({
+          courseId: scorecardModalCourse.id,
+          playerIds: scorecardSelectedPlayers,
+          guestPlayers,
+          sideGame,
+        })
       });
       const data = await response.json();
       if (data.success) {
         setTournament(data.tournament);
-        setShowScorecardModal(false);
-        setScorecardSelectedPlayers([]);
+        resetScorecardModal();
         const selectedTeeIndex = tournament?.courseSettings?.[scorecardModalCourse.id]?.selectedTeeIndex || 0;
         navigation.navigate('GroupScorecard', {
           scorecard: data.scorecard,
@@ -941,59 +967,185 @@ export default function TournamentDetail({ navigation, route, user, sessionToken
         </View>
       </Modal>
 
-      {/* Create Scorecard Modal */}
+      {/* Create Scorecard Modal — multi-step */}
       <Modal
         visible={showScorecardModal}
         animationType="slide"
         transparent={true}
-        onRequestClose={() => setShowScorecardModal(false)}
+        onRequestClose={resetScorecardModal}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Create Scorecard</Text>
-            <Text style={styles.modalSubtitle}>
-              {scorecardModalCourse?.name}{'\n'}Select players in your group
-            </Text>
 
-            <ScrollView style={{ maxHeight: 280, marginBottom: 16 }}>
-              {(tournament?.players || []).map((player: any) => {
-                const isSelected = scorecardSelectedPlayers.includes(player.id);
-                const isCurrentUser = player.id === user?.id;
-                return (
+            {/* Step 1 — Players */}
+            {scorecardModalStep === 'players' && (
+              <>
+                <Text style={styles.modalTitle}>Create Scorecard</Text>
+                <Text style={styles.modalSubtitle}>{scorecardModalCourse?.name}{'\n'}Select players in your group</Text>
+                <ScrollView style={{ maxHeight: 260, marginBottom: 16 }}>
+                  {(tournament?.players || []).map((player: any) => {
+                    const isSelected = scorecardSelectedPlayers.includes(player.id);
+                    const isCurrentUser = player.id === user?.id;
+                    return (
+                      <TouchableOpacity
+                        key={player.id}
+                        style={[styles.playerSelectRow, isSelected && styles.playerSelectRowSelected]}
+                        onPress={() => !isCurrentUser && toggleScorecardPlayer(player.id)}
+                        activeOpacity={isCurrentUser ? 1 : 0.7}
+                      >
+                        <View style={[styles.playerSelectCheck, isSelected && styles.playerSelectCheckSelected]}>
+                          {isSelected && <Text style={styles.playerSelectCheckMark}>✓</Text>}
+                        </View>
+                        <Text style={[styles.playerSelectName, isSelected && styles.playerSelectNameSelected]}>
+                          {player.username}{isCurrentUser ? ' (you)' : ''}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+                <View style={styles.modalActions}>
+                  <TouchableOpacity style={styles.modalCancelButton} onPress={resetScorecardModal}>
+                    <Text style={styles.modalCancelText}>Cancel</Text>
+                  </TouchableOpacity>
                   <TouchableOpacity
-                    key={player.id}
-                    style={[styles.playerSelectRow, isSelected && styles.playerSelectRowSelected]}
-                    onPress={() => !isCurrentUser && toggleScorecardPlayer(player.id)}
-                    activeOpacity={isCurrentUser ? 1 : 0.7}
+                    style={[styles.modalAddButton, scorecardSelectedPlayers.length === 0 && styles.disabledButton]}
+                    onPress={() => setScorecardModalStep('guests')}
+                    disabled={scorecardSelectedPlayers.length === 0}
                   >
-                    <View style={[styles.playerSelectCheck, isSelected && styles.playerSelectCheckSelected]}>
-                      {isSelected && <Text style={styles.playerSelectCheckMark}>✓</Text>}
+                    <Text style={styles.modalAddText}>Next →</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
+
+            {/* Step 2 — Guests */}
+            {scorecardModalStep === 'guests' && (
+              <>
+                <Text style={styles.modalTitle}>Add Guests</Text>
+                <Text style={styles.modalSubtitle}>Optional — players without accounts</Text>
+                <ScrollView style={{ maxHeight: 160, marginBottom: 12 }}>
+                  {guestPlayers.map(g => (
+                    <View key={g.id} style={styles.playerSelectRow}>
+                      <Text style={[styles.playerSelectName, { flex: 1 }]}>{g.name}</Text>
+                      <TouchableOpacity onPress={() => setGuestPlayers(prev => prev.filter(x => x.id !== g.id))}>
+                        <Text style={{ color: '#c62828', fontSize: 16, paddingHorizontal: 8 }}>✕</Text>
+                      </TouchableOpacity>
                     </View>
-                    <Text style={[styles.playerSelectName, isSelected && styles.playerSelectNameSelected]}>
-                      {player.username}{isCurrentUser ? ' (you)' : ''}
+                  ))}
+                </ScrollView>
+                <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
+                  <TextInput
+                    style={[styles.urlInput, { flex: 1, minHeight: 44, marginBottom: 0, fontSize: 14 }]}
+                    placeholder="Guest name"
+                    value={guestNameInput}
+                    onChangeText={setGuestNameInput}
+                    onSubmitEditing={() => {
+                      if (guestNameInput.trim()) {
+                        setGuestPlayers(prev => [...prev, { id: 'guest_' + Math.random().toString(36).substr(2, 6), name: guestNameInput.trim() }]);
+                        setGuestNameInput('');
+                      }
+                    }}
+                  />
+                  <TouchableOpacity
+                    style={[styles.modalAddButton, { flex: 0, paddingHorizontal: 16 }]}
+                    onPress={() => {
+                      if (guestNameInput.trim()) {
+                        setGuestPlayers(prev => [...prev, { id: 'guest_' + Math.random().toString(36).substr(2, 6), name: guestNameInput.trim() }]);
+                        setGuestNameInput('');
+                      }
+                    }}
+                  >
+                    <Text style={styles.modalAddText}>+ Add</Text>
+                  </TouchableOpacity>
+                </View>
+                <View style={styles.modalActions}>
+                  <TouchableOpacity style={styles.modalCancelButton} onPress={() => setScorecardModalStep('players')}>
+                    <Text style={styles.modalCancelText}>← Back</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.modalAddButton} onPress={() => setScorecardModalStep('sideGame')}>
+                    <Text style={styles.modalAddText}>Next →</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
+
+            {/* Step 3 — Side Game */}
+            {scorecardModalStep === 'sideGame' && (
+              <>
+                <Text style={styles.modalTitle}>Side Game</Text>
+                <Text style={styles.modalSubtitle}>Optional — track a game within your group</Text>
+
+                {/* Type selection */}
+                {(['none', 'topX', 'team'] as const).map(type => (
+                  <TouchableOpacity
+                    key={type}
+                    style={[styles.sideGameOption, sideGameType === type && styles.sideGameOptionSelected]}
+                    onPress={() => setSideGameType(type)}
+                  >
+                    <View style={[styles.sideGameRadio, sideGameType === type && styles.sideGameRadioSelected]} />
+                    <Text style={[styles.sideGameOptionText, sideGameType === type && styles.sideGameOptionTextSelected]}>
+                      {type === 'none' ? 'None' : type === 'topX' ? 'Top X' : 'Team Game'}
                     </Text>
                   </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
+                ))}
 
-            <View style={styles.modalActions}>
-              <TouchableOpacity
-                style={styles.modalCancelButton}
-                onPress={() => { setShowScorecardModal(false); setScorecardSelectedPlayers([]); }}
-              >
-                <Text style={styles.modalCancelText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.modalAddButton, scorecardSelectedPlayers.length === 0 && styles.disabledButton]}
-                onPress={createScorecard}
-                disabled={scorecardSelectedPlayers.length === 0}
-              >
-                <Text style={styles.modalAddText}>
-                  Start ({scorecardSelectedPlayers.length})
-                </Text>
-              </TouchableOpacity>
-            </View>
+                {/* Top X config */}
+                {sideGameType === 'topX' && (
+                  <View style={styles.sideGameConfig}>
+                    <Text style={styles.sideGameConfigLabel}>COUNT TOP HOW MANY SCORES?</Text>
+                    <View style={styles.sideGameXRow}>
+                      {([1, 2, 3] as const).map(n => (
+                        <TouchableOpacity
+                          key={n}
+                          style={[styles.sideGameXBtn, topXValue === n && styles.sideGameXBtnSelected]}
+                          onPress={() => setTopXValue(n)}
+                        >
+                          <Text style={[styles.sideGameXBtnText, topXValue === n && styles.sideGameXBtnTextSelected]}>{n}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </View>
+                )}
+
+                {/* Team config */}
+                {sideGameType === 'team' && (
+                  <View style={styles.sideGameConfig}>
+                    <Text style={styles.sideGameConfigLabel}>ASSIGN TEAMS</Text>
+                    {[...scorecardSelectedPlayers.map((id: string) => ({
+                      id,
+                      name: tournament?.players?.find((p: any) => p.id === id)?.username || id
+                    })), ...guestPlayers].map(player => (
+                      <View key={player.id} style={styles.teamAssignRow}>
+                        <Text style={styles.teamAssignName}>{player.name}</Text>
+                        <View style={styles.teamBtnRow}>
+                          {([0, 1] as const).map(team => (
+                            <TouchableOpacity
+                              key={team}
+                              style={[styles.teamBtn, teamAssignments[player.id] === team && styles.teamBtnSelected]}
+                              onPress={() => setTeamAssignments(prev => ({ ...prev, [player.id]: team }))}
+                            >
+                              <Text style={[styles.teamBtnText, teamAssignments[player.id] === team && styles.teamBtnTextSelected]}>
+                                {team === 0 ? 'A' : 'B'}
+                              </Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+                )}
+
+                <View style={[styles.modalActions, { marginTop: 16 }]}>
+                  <TouchableOpacity style={styles.modalCancelButton} onPress={() => setScorecardModalStep('guests')}>
+                    <Text style={styles.modalCancelText}>← Back</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.modalAddButton} onPress={createScorecard}>
+                    <Text style={styles.modalAddText}>Start</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
+
           </View>
         </View>
       </Modal>
@@ -1766,5 +1918,116 @@ const styles = StyleSheet.create({
   playerSelectNameSelected: {
     color: '#062612',
     fontWeight: '500',
+  },
+
+  // Side game option rows
+  sideGameOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+    gap: 10,
+  },
+  sideGameOptionSelected: {
+    backgroundColor: '#f5f8f5',
+  },
+  sideGameRadio: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 2,
+    borderColor: '#aaa',
+  },
+  sideGameRadioSelected: {
+    borderColor: '#2d9e5f',
+    backgroundColor: '#2d9e5f',
+  },
+  sideGameOptionText: {
+    fontSize: 15,
+    color: '#555',
+  },
+  sideGameOptionTextSelected: {
+    color: '#062612',
+    fontWeight: '500',
+  },
+
+  // Side game config block
+  sideGameConfig: {
+    marginTop: 12,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#e8e8e8',
+  },
+  sideGameConfigLabel: {
+    fontSize: 11,
+    color: '#888',
+    fontWeight: '600',
+    letterSpacing: 0.5,
+    marginBottom: 10,
+  },
+  sideGameXRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  sideGameXBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 6,
+    borderWidth: 1.5,
+    borderColor: '#ddd',
+    alignItems: 'center',
+  },
+  sideGameXBtnSelected: {
+    borderColor: '#2d9e5f',
+    backgroundColor: '#2d9e5f',
+  },
+  sideGameXBtnText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#555',
+  },
+  sideGameXBtnTextSelected: {
+    color: 'white',
+  },
+
+  // Team assignment
+  teamAssignRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  teamAssignName: {
+    flex: 1,
+    fontSize: 14,
+    color: '#333',
+  },
+  teamBtnRow: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  teamBtn: {
+    width: 36,
+    height: 32,
+    borderRadius: 5,
+    borderWidth: 1.5,
+    borderColor: '#ddd',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  teamBtnSelected: {
+    borderColor: '#2d9e5f',
+    backgroundColor: '#2d9e5f',
+  },
+  teamBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#666',
+  },
+  teamBtnTextSelected: {
+    color: 'white',
   },
 });

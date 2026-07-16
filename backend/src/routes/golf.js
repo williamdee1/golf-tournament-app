@@ -207,10 +207,20 @@ async function scrape18Birdies(url) {
     tees.push({ name: tee.name, color: tee.name, rating, slope });
   });
 
+  // Some clubs have extra holes (e.g. a par-3 course) appended after the main 18.
+  // Deduplicate by stroke index to get only legitimate holes, then cap at 18.
+  const seenSI = new Set();
+  const dedupedHoles = club.holes.filter(h => {
+    const si = h.menHandicap;
+    if (si >= 1 && si <= 18 && !seenSI.has(si)) { seenSI.add(si); return true; }
+    return false;
+  });
+  // Fall back to first 18 if stroke-index data is absent
+  const holesSource = dedupedHoles.length >= 9 ? dedupedHoles : club.holes.slice(0, 18);
+
   // Build hole list
-  const holes = club.holes.map((h, i) => {
+  const holes = holesSource.map((h, i) => {
     const yardages = {};
-    let teeIdx = 0;
     club.tees.forEach((tee, ti) => {
       if (!seenTeeNames.has(tee.name + '_counted')) {
         // First occurrence of this tee colour
@@ -219,16 +229,17 @@ async function scrape18Birdies(url) {
         seenTeeNames.add(tee.name + '_counted');
       }
     });
+    // Reset _counted markers between holes so each hole gets its yardages
+    for (const k of [...seenTeeNames]) { if (k.endsWith('_counted')) seenTeeNames.delete(k); }
+    const rawPar = h.menPar;
+    const par = (typeof rawPar === 'number' && rawPar >= 3 && rawPar <= 5) ? rawPar : 4;
     return {
       number: i + 1,
-      par: h.menPar || 4,
+      par,
       handicap: h.menHandicap || 0,
       yardages,
     };
   });
-
-  // Re-clear the _counted markers so they don't pollute the tees list
-  for (const k of [...seenTeeNames]) { if (k.endsWith('_counted')) seenTeeNames.delete(k); }
 
   const totalPar = holes.reduce((s, h) => s + h.par, 0);
   const totalYardage = {};

@@ -18,7 +18,7 @@ type Hole = {
 };
 
 export default function CourseScorecard({ navigation, route, user, sessionToken }: Props) {
-  const { course, tournamentId, tournamentName, selectedTeeIndex = 0, viewingPlayer } = route.params;
+  const { course, tournamentId, tournamentName, selectedTeeIndex = 0, viewingPlayer, preloadedScores, preloadedHandicap } = route.params;
 
   // Determine which player's scorecard we're viewing
   const currentPlayer = viewingPlayer || user;
@@ -45,6 +45,13 @@ export default function CourseScorecard({ navigation, route, user, sessionToken 
   }, []);
 
   const loadScores = async () => {
+    // Use pre-loaded scores (e.g. for guest players whose scores live on the scorecard)
+    if (preloadedScores !== undefined) {
+      setScores(preloadedScores);
+      if (preloadedHandicap !== undefined) setCourseHandicap(String(preloadedHandicap));
+      return;
+    }
+
     if (!tournamentId || !currentPlayer || !sessionToken) return;
 
     try {
