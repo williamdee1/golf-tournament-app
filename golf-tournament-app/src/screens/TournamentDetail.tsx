@@ -20,7 +20,7 @@ type Course = {
   url: string;
 };
 
-function ActiveScorecardsSection({ activeScorecards, courses, tournament, tournamentId, tournamentName, navigation }: any) {
+function ActiveScorecardsSection({ activeScorecards, courses, tournament, tournamentId, tournamentName, navigation, onDelete }: any) {
   const [expanded, setExpanded] = useState(true);
   return (
     <View style={activeStyles.section}>
@@ -32,28 +32,38 @@ function ActiveScorecardsSection({ activeScorecards, courses, tournament, tourna
         const course = courses.find((c: Course) => c.id === sc.courseId);
         const scTeeIndex = tournament?.courseSettings?.[sc.courseId]?.selectedTeeIndex || 0;
         return (
-          <TouchableOpacity
-            key={sc.id}
-            style={activeStyles.card}
-            onPress={() => navigation.navigate('GroupScorecard', {
-              scorecard: sc,
-              course: course || { id: sc.courseId, name: sc.courseName, holes: [], tees: [] },
-              tournamentId: tournament?.id || tournamentId,
-              tournamentName,
-              selectedTeeIndex: scTeeIndex,
-            })}
-            activeOpacity={0.7}
-          >
-            <View style={activeStyles.cardAccent} />
-            <View style={activeStyles.cardContent}>
-              <Text style={activeStyles.courseName}>{sc.courseName}</Text>
-              <Text style={activeStyles.players} numberOfLines={1}>
-                {Object.values(sc.playerNames).join(', ')}
-              </Text>
-              <Text style={activeStyles.meta}>{sc.playerIds.length} players · by {sc.createdByName}</Text>
-            </View>
-            <Text style={activeStyles.chevron}>›</Text>
-          </TouchableOpacity>
+          <View key={sc.id} style={activeStyles.card}>
+            <TouchableOpacity
+              style={activeStyles.cardMain}
+              onPress={() => navigation.navigate('GroupScorecard', {
+                scorecard: sc,
+                course: course || { id: sc.courseId, name: sc.courseName, holes: [], tees: [] },
+                tournamentId: tournament?.id || tournamentId,
+                tournamentName,
+                selectedTeeIndex: scTeeIndex,
+              })}
+              activeOpacity={0.7}
+            >
+              <View style={activeStyles.cardAccent} />
+              <View style={activeStyles.cardContent}>
+                <Text style={activeStyles.courseName}>{sc.courseName}</Text>
+                <Text style={activeStyles.players} numberOfLines={1}>
+                  {Object.values(sc.playerNames).join(', ')}
+                </Text>
+                <Text style={activeStyles.meta}>{sc.playerIds.length} players · by {sc.createdByName}</Text>
+              </View>
+              <Text style={activeStyles.chevron}>›</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={activeStyles.deleteButton}
+              onPress={() => {
+                if (window.confirm('Delete this scorecard?')) onDelete(sc.id);
+              }}
+              activeOpacity={0.7}
+            >
+              <Text style={activeStyles.deleteButtonText}>✕</Text>
+            </TouchableOpacity>
+          </View>
         );
       })}
     </View>
@@ -87,10 +97,15 @@ const activeStyles = StyleSheet.create({
     borderRadius: 6,
     marginBottom: 10,
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'stretch',
     borderWidth: 1,
     borderColor: 'rgba(0,0,0,0.06)',
     overflow: 'hidden',
+  },
+  cardMain: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   cardAccent: {
     width: 3,
@@ -119,7 +134,18 @@ const activeStyles = StyleSheet.create({
   chevron: {
     fontSize: 20,
     color: '#ccc',
-    paddingRight: 16,
+    paddingRight: 12,
+  },
+  deleteButton: {
+    paddingHorizontal: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderLeftWidth: 1,
+    borderLeftColor: 'rgba(0,0,0,0.06)',
+  },
+  deleteButtonText: {
+    fontSize: 14,
+    color: '#ccc',
   },
 });
 
@@ -552,6 +578,7 @@ export default function TournamentDetail({ navigation, route, user, sessionToken
               tournamentId={tournamentId}
               tournamentName={tournamentName}
               navigation={navigation}
+              onDelete={deleteScorecardGroup}
             />
             <View style={styles.sectionDivider} />
           </>
